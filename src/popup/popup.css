@@ -21,36 +21,21 @@
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     --radius: 8px;
     --transition: all 0.2s ease;
-    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-    --font-size-lg: 20px;
-    --font-size-md: 16px;
-    --font-size-sm: 14px;
-    --font-size-xs: 12px;
-    --spacing-md: 16px;
-    --spacing-lg: 20px;
-    --spacing-sm: 8px;
-    --spacing-xs: 4px;
-    --radius-full: 12px;
-    --radius-md: 8px;
-    --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08);
-    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
-    --surface-color: #ffffff;
-    --transition-fast: all 0.2s ease;
 }
 
 body {
     width: 360px;
-    font-family: var(--font-family);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
     color: var(--text-color);
     background-color: var(--background-color);
     line-height: 1.5;
 }
 
 .popup-container {
-    padding: var(--spacing-md);
-    background-color: var(--surface-color);
-    box-shadow: var(--shadow-md);
-    border-radius: var(--radius-md);
+    padding: 16px;
+    background-color: var(--card-color);
+    box-shadow: var(--shadow);
+    border-radius: var(--radius);
 }
 
 /* 头部样式 */
@@ -58,13 +43,13 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--spacing-lg);
-    padding-bottom: var(--spacing-md);
+    margin-bottom: 20px;
+    padding-bottom: 12px;
     border-bottom: 1px solid var(--border-color);
 }
 
 h1 {
-    font-size: var(--font-size-lg);
+    font-size: 20px;
     color: var(--primary-color);
     font-weight: 600;
 }
@@ -72,14 +57,14 @@ h1 {
 .version-badge {
     background-color: var(--secondary-color);
     color: white;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--radius-full);
-    font-size: var(--font-size-xs);
+    padding: 2px 6px;
+    border-radius: 12px;
+    font-size: 10px;
     font-weight: 500;
 }
 
 h2 {
-    font-size: var(--font-size-md);
+    font-size: 16px;
     color: var(--text-color);
     font-weight: 500;
     margin: 0;
@@ -87,23 +72,23 @@ h2 {
 
 /* 卡片样式 */
 .card {
-    background-color: var(--surface-color);
-    border-radius: var(--radius-md);
+    background-color: var(--card-color);
+    border-radius: var(--radius);
     border: 1px solid var(--border-color);
-    margin-bottom: var(--spacing-md);
+    margin-bottom: 16px;
     overflow: hidden;
-    transition: var(--transition-fast);
+    transition: var(--transition);
 }
 
 .card:hover {
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--spacing-sm) var(--spacing-md);
+    padding: 12px 16px;
     border-bottom: 1px solid var(--border-color);
     background-color: var(--primary-light);
 }
@@ -113,11 +98,11 @@ h2 {
 }
 
 .settings-card .card-header {
-    background-color: var(--background-color);
+    background-color: #f5f5f5;
 }
 
 .card-content {
-    padding: var(--spacing-md);
+    padding: 16px;
 }
 
 /* 模型信息样式 */
@@ -133,21 +118,21 @@ h2 {
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    margin-right: var(--spacing-sm);
-    background-color: var(--success-color);
+    margin-right: 8px;
+    background-color: #27ae60;
     color: white;
     font-weight: bold;
 }
 
 .model-name {
-    font-size: var(--font-size-md);
+    font-size: 16px;
     font-weight: 500;
 }
 
 .model-status {
-    font-size: var(--font-size-xs);
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--radius-full);
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 12px;
     background-color: var(--background-color);
 }
 
@@ -163,8 +148,8 @@ h2 {
 
 .description {
     color: var(--text-secondary);
-    font-size: var(--font-size-sm);
-    margin-bottom: var(--spacing-md);
+    font-size: 14px;
+    margin-bottom: 16px;
     line-height: 1.5;
 }
 
@@ -175,16 +160,16 @@ h2 {
 
 /* 设置项样式 */
 .settings-items {
-    padding: var(--spacing-sm) 0;
+    padding: 8px 0;
 }
 
 .settings-item {
     display: flex;
     align-items: center;
-    padding: var(--spacing-sm) var(--spacing-md);
+    padding: 12px 16px;
     text-decoration: none;
     color: var(--text-color);
-    transition: var(--transition-fast);
+    transition: var(--transition);
 }
 
 .settings-item:hover {
@@ -192,8 +177,8 @@ h2 {
 }
 
 .settings-icon {
-    margin-right: var(--spacing-md);
-    font-size: var(--font-size-lg);
+    margin-right: 16px;
+    font-size: 20px;
 }
 
 .settings-text {
@@ -203,31 +188,31 @@ h2 {
 .settings-title {
     display: block;
     font-weight: 500;
-    margin-bottom: var(--spacing-xs);
+    margin-bottom: 2px;
 }
 
 .settings-description {
     display: block;
-    font-size: var(--font-size-xs);
+    font-size: 12px;
     color: var(--text-secondary);
 }
 
 .settings-arrow {
-    font-size: var(--font-size-lg);
+    font-size: 20px;
     color: var(--secondary-color);
 }
 
 /* 按钮样式 */
 .primary-button {
-    padding: var(--spacing-sm) var(--spacing-md);
+    padding: 8px 16px;
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius);
     background-color: var(--primary-color);
     color: white;
-    font-size: var(--font-size-sm);
+    font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: var(--transition-fast);
+    transition: var(--transition);
 }
 
 .primary-button:hover {
@@ -276,31 +261,31 @@ h2 {
 
 /* 调试面板 */
 .debug-panel {
-    margin-top: var(--spacing-md);
-    font-size: var(--font-size-sm);
+    margin-top: 16px;
+    font-size: 14px;
     color: var(--text-secondary);
     border-top: 1px solid var(--border-color);
-    padding-top: var(--spacing-sm);
+    padding-top: 12px;
 }
 
 .debug-panel summary {
     cursor: pointer;
-    padding: var(--spacing-sm) 0;
+    padding: 8px 0;
     display: flex;
     align-items: center;
     user-select: none;
 }
 
 .info-icon {
-    margin-right: var(--spacing-sm);
+    margin-right: 8px;
 }
 
 .debug-content {
-    padding: var(--spacing-sm);
+    padding: 12px;
     background-color: var(--background-color);
-    border-radius: var(--radius-md);
-    margin-top: var(--spacing-sm);
-    font-size: var(--font-size-xs);
+    border-radius: var(--radius);
+    margin-top: 8px;
+    font-size: 13px;
     line-height: 1.5;
     max-height: 200px;
     overflow-y: auto;
@@ -316,14 +301,14 @@ h2 {
 }
 
 .debug-content p {
-    margin-bottom: var(--spacing-sm);
+    margin-bottom: 8px;
 }
 
 .debug-content ul {
-    margin-left: var(--spacing-lg);
-    margin-bottom: var(--spacing-sm);
+    margin-left: 20px;
+    margin-bottom: 8px;
 }
 
 .debug-content ul li {
-    margin-bottom: var(--spacing-xs);
+    margin-bottom: 4px;
 }

@@ -1,33 +1,31 @@
-@import url('../styles/shared.css');
-
 .ai-text-optimizer-button {
     position: fixed;
-    z-index: var(--z-index-fixed);
-    padding: var(--spacing-sm) var(--spacing-md);
+    z-index: 10000;
+    padding: 8px 14px;
     border: none;
-    border-radius: var(--radius-full);
-    background-color: var(--primary-color);
+    border-radius: 20px;
+    background-color: #1a73e8;
     color: white;
-    font-size: var(--font-size-sm);
+    font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    box-shadow: var(--shadow-md);
-    transition: var(--transition-normal);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     display: flex;
     align-items: center;
     min-width: 100px;
     justify-content: center;
-    font-family: var(--font-family);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
 }
 
 /* 低调样式用于"始终可见"模式 */
 .ai-text-optimizer-button-subtle {
     opacity: 0.6;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    font-size: var(--font-size-xs);
+    padding: 5px 10px;
+    font-size: 12px;
     min-width: 70px;
     background-color: rgba(26, 115, 232, 0.7);
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     transform: scale(0.9);
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
@@ -35,28 +33,28 @@
 .ai-text-optimizer-button-subtle:hover {
     opacity: 1;
     transform: scale(1);
-    background-color: var(--primary-color);
-    box-shadow: var(--shadow-md);
+    background-color: #1a73e8;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .ai-text-optimizer-button-subtle::before {
-    font-size: var(--font-size-sm);
+    font-size: 14px;
 }
 
 .ai-text-optimizer-button::before {
     content: "✨";
-    margin-right: var(--spacing-xs);
-    font-size: var(--font-size-md);
+    margin-right: 6px;
+    font-size: 16px;
 }
 
 .ai-text-optimizer-button:hover {
-    background-color: var(--primary-dark);
-    box-shadow: var(--shadow-lg);
+    background-color: #1557b0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     transform: translateY(-2px);
 }
 
 .ai-text-optimizer-button:disabled {
-    background-color: var(--secondary-color);
+    background-color: #a0a0a0;
     cursor: not-allowed;
     box-shadow: none;
     transform: none;
@@ -69,7 +67,7 @@
 
 .ai-text-optimizer-button:active {
     transform: translateY(1px);
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 @keyframes spin {
@@ -79,7 +77,7 @@
 
 /* 为不同状态添加动画效果 */
 .ai-text-optimizer-button-success {
-    background-color: var(--success-color) !important;
+    background-color: #0f9d58 !important;
 }
 
 .ai-text-optimizer-button-success::before {
@@ -87,7 +85,7 @@
 }
 
 .ai-text-optimizer-button-error {
-    background-color: var(--error-color) !important;
+    background-color: #d93025 !important;
 }
 
 .ai-text-optimizer-button-error::before {
@@ -97,19 +95,19 @@
 /* 新增：优化类似Toast提示样式 */
 .ai-text-optimizer-tooltip {
     position: fixed;
-    z-index: var(--z-index-toast);
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-radius: var(--radius-md);
+    z-index: 10001;
+    padding: 8px 16px;
+    border-radius: 8px;
     background-color: rgba(0, 0, 0, 0.8);
     color: white;
-    font-size: var(--font-size-sm);
+    font-size: 14px;
     max-width: 300px;
     text-align: center;
     pointer-events: none;
     transform: translateY(-10px);
-    transition: var(--transition-normal);
+    transition: all 0.3s ease;
     opacity: 0;
-    font-family: var(--font-family);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
 }
 
 .ai-text-optimizer-tooltip.show {
@@ -126,30 +124,12 @@
 /* 响应式设计 */
 @media (max-width: 600px) {
     .ai-text-optimizer-button {
-        font-size: var(--font-size-xs);
-        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: 12px;
+        padding: 6px 10px;
         min-width: 80px;
     }
 
     .ai-text-optimizer-button::before {
-        font-size: var(--font-size-sm);
+        font-size: 14px;
     }
-}
-
-/* 错误提示样式 */
-.ai-text-optimizer-error-div {
-    position: fixed;
-    top: var(--spacing-md);
-    right: var(--spacing-md);
-    background-color: var(--surface-color);
-    color: var(--error-color);
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-radius: var(--radius-md);
-    z-index: var(--z-index-toast);
-    box-shadow: var(--shadow-md);
-    font-size: var(--font-size-sm);
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    font-family: var(--font-family);
 }
