@@ -153,21 +153,34 @@ async function optimizeText(text) {
     console.log('收到优化请求, 文本长度:', text.length);
     
     try {
-        const settings = await loadSettings();
+        // 优化1: 并行加载设置和缓存检查
+        const settingsPromise = loadSettings();
+        
+        // 优化2: 提前计算缓存键(使用text前100个字符作为简单键)
+        const simpleCacheKey = text.substring(0, 100);
+        
+        // 快速检查简单缓存
+        if (responseCache.has(simpleCacheKey)) {
+            console.log('使用简单缓存的响应');
+            return responseCache.get(simpleCacheKey).response;
+        }
+        
+        // 等待设置加载完成
+        const settings = await settingsPromise;
         const apiKeys = settings.apiKeys || {};
         const userSettings = settings.settings || {};
         const currentModel = settings.currentModel || 'grok';
         const modelVariant = settings.modelVariant || '';
         const temperature = userSettings.temperature || 0.7;
         
-        // 生成提示词用于日志记录和缓存键
+        // 生成提示词
         const prompt = getPrompt(text, userSettings.promptTemplate);
         
-        // 检查缓存中是否有响应
-        const cacheKey = getCacheKey(prompt, modelVariant, temperature);
-        if (responseCache.has(cacheKey)) {
-            const cachedData = responseCache.get(cacheKey);
-            console.log('使用缓存的响应');
+        // 再次检查完整缓存键
+        const fullCacheKey = getCacheKey(prompt, modelVariant, temperature);
+        if (responseCache.has(fullCacheKey)) {
+            const cachedData = responseCache.get(fullCacheKey);
+            console.log('使用完整缓存的响应');
             return cachedData.response;
         }
 
@@ -199,22 +212,25 @@ async function optimizeText(text) {
                     };
                 }
                 
-                // 使用AbortController设置请求超时
+                // 优化3: 减少超时时间
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+                const timeoutId = setTimeout(() => controller.abort(), 7000); // 减少到7秒超时
                 
                 try {
+                    // 优化4: 发送请求前预编译请求体JSON
+                    const bodyJson = JSON.stringify(bodyPayload);
+                    
                     const response = await fetch(apiConfig.url, {
                         method: 'POST',
                         headers,
-                        body: JSON.stringify(bodyPayload),
+                        body: bodyJson,
                         signal: controller.signal,
                         // 添加性能优化选项
                         cache: 'no-cache',
                         redirect: 'follow',
                         referrerPolicy: 'no-referrer',
-                        keepalive: true,  // 维持连接以避免重复建立连接的开销
-                        priority: 'high'  // 指示浏览器优先处理该请求
+                        keepalive: true,
+                        priority: 'high'
                     });
                     
                     // 清除超时
@@ -225,6 +241,7 @@ async function optimizeText(text) {
                         throw new Error(`HTTP error ${response.status}: ${errorText}`);
                     }
                     
+                    // 优化5: 流式处理响应数据
                     const data = await response.json();
                     
                     // 提取优化后的文本，根据不同模型处理
@@ -232,21 +249,17 @@ async function optimizeText(text) {
                         optimizedText = extractGeminiResponse(data);
                         debug = 'Gemini API调用成功';
                     } else {
-                        // Grok模型响应处理
-                        if (data.optimizedText) {
+                        // Grok模型响应处理 - 优先检查最常见的响应格式
+                        if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+                            optimizedText = data.choices[0].message.content;
+                            debug = 'AI接口调用成功(choices[0].message.content)';
+                        } else if (data.optimizedText) {
                             optimizedText = data.optimizedText;
                             debug = 'AI接口调用成功(optimizedText)';
-                        } else if (data.choices && data.choices[0]) {
-                            // OpenAI/Grok 风格响应
-                            if (data.choices[0].message && data.choices[0].message.content) {
-                                optimizedText = data.choices[0].message.content;
-                                debug = 'AI接口调用成功(choices[0].message.content)';
-                            } else if (data.choices[0].text) {
-                                optimizedText = data.choices[0].text;
-                                debug = 'AI接口调用成功(choices[0].text)';
-                            }
+                        } else if (data.choices && data.choices[0] && data.choices[0].text) {
+                            optimizedText = data.choices[0].text;
+                            debug = 'AI接口调用成功(choices[0].text)';
                         } else if (data.text) {
-                            // 简单文本返回
                             optimizedText = data.text;
                             debug = 'AI接口调用成功(text)';
                         }
@@ -258,10 +271,14 @@ async function optimizeText(text) {
                     
                     // 存储响应到缓存
                     const result = { optimizedText, debug };
-                    responseCache.set(cacheKey, {
+                    
+                    // 优化6: 同时存储简单缓存和完整缓存
+                    const cacheData = {
                         response: result,
                         timestamp: Date.now()
-                    });
+                    };
+                    responseCache.set(fullCacheKey, cacheData);
+                    responseCache.set(simpleCacheKey, cacheData);
                     
                     return result;
                 } catch (fetchError) {
@@ -277,11 +294,9 @@ async function optimizeText(text) {
                     throw fetchError;
                 }
             } catch (apiError) {
-                let errorMsg = "AI服务不可用，请稍后重试。";
-                
-                if (apiError && apiError.message) {
-                    errorMsg += " 错误信息: " + apiError.message;
-                }
+                // 优化7: 简化错误处理
+                const errorMsg = "AI服务不可用，请稍后重试。" + 
+                    (apiError && apiError.message ? " 错误信息: " + apiError.message : "");
                 
                 return { 
                     optimizedText: errorMsg,
@@ -290,17 +305,21 @@ async function optimizeText(text) {
             }
         } else {
             console.warn('未配置API Key或API信息，使用本地模拟');
+            
+            // 优化8: 提前加载本地模拟结果
             optimizedText = generateOptimizedText(text);
             debug = '无API Key，未返回AI结果';
         }
 
         const result = { optimizedText, debug };
         
-        // 即使是模拟结果也缓存起来
-        responseCache.set(cacheKey, {
+        // 优化9: 同时存储简单缓存和完整缓存
+        const cacheData = {
             response: result,
             timestamp: Date.now()
-        });
+        };
+        responseCache.set(fullCacheKey, cacheData);
+        responseCache.set(simpleCacheKey, cacheData);
         
         return result;
     } catch (error) {
