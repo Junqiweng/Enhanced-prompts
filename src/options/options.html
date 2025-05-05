@@ -427,6 +427,28 @@
             <div class="card">
                 <div class="card-title">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 3L20 7.5V16.5L12 21L4 16.5V7.5L12 3Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M12 3V21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M4 7.5L20 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M20 7.5L4 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>模型选择</span>
+                </div>
+                <div class="option-group">
+                    <label for="current-model">当前使用的AI模型:</label>
+                    <select id="current-model">
+                        <option value="grok">Grok by xAI</option>
+                        <option value="claude">Claude by Anthropic</option>
+                        <option value="gemini">Gemini by Google</option>
+                        <option value="custom">自定义API (OpenAI兼容)</option>
+                    </select>
+                    <p class="help-text">选择要用于文本优化的AI模型</p>
+                </div>
+            </div>
+
+            <div class="card model-config" id="grok-config">
+                <div class="card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M21 16V8.00002C20.9996 7.6493 20.9071 7.30483 20.7315 7.00119C20.556 6.69754 20.3037 6.44539 20 6.27002L13 2.27002C12.696 2.09449 12.3511 2.00208 12 2.00208C11.6489 2.00208 11.304 2.09449 11 2.27002L4 6.27002C3.69626 6.44539 3.44398 6.69754 3.26846 7.00119C3.09294 7.30483 3.00036 7.6493 3 8.00002V16C3.00036 16.3508 3.09294 16.6952 3.26846 16.9989C3.44398 17.3025 3.69626 17.5547 4 17.73L11 21.73C11.304 21.9056 11.6489 21.998 12 21.998C12.3511 21.998 12.696 21.9056 13 21.73L20 17.73C20.3037 17.5547 20.556 17.3025 20.7315 16.9989C20.9071 16.6952 20.9996 16.3508 21 16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         <path d="M3.27002 6.96001L12 12L20.73 6.96001" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         <path d="M12 22.08V12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -456,6 +478,119 @@
                         </select>
                     </div>
                     <p class="help-text">从XAI官网获取的可用模型列表</p>
+                </div>
+            </div>
+            
+            <div class="card model-config" id="claude-config" style="display:none">
+                <div class="card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M21 16V8.00002C20.9996 7.6493 20.9071 7.30483 20.7315 7.00119C20.556 6.69754 20.3037 6.44539 20 6.27002L13 2.27002C12.696 2.09449 12.3511 2.00208 12 2.00208C11.6489 2.00208 11.304 2.09449 11 2.27002L4 6.27002C3.69626 6.44539 3.44398 6.69754 3.26846 7.00119C3.09294 7.30483 3.00036 7.6493 3 8.00002V16C3.00036 16.3508 3.09294 16.6952 3.26846 16.9989C3.44398 17.3025 3.69626 17.5547 4 17.73L11 21.73C11.304 21.9056 11.6489 21.998 12 21.998C12.3511 21.998 12.696 21.9056 13 21.73L20 17.73C20.3037 17.5547 20.556 17.3025 20.7315 16.9989C20.9071 16.6952 20.9996 16.3508 21 16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M3.27002 6.96001L12 12L20.73 6.96001" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M12 22.08V12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Claude API配置</span>
+                </div>
+                <div class="option-group">
+                    <label for="claude-url">API URL:</label>
+                    <input type="text" id="claude-url" value="https://api.anthropic.com/v1/messages" placeholder="输入Claude API URL" />
+                    <p class="help-text">默认为: https://api.anthropic.com/v1/messages</p>
+                </div>
+                <div class="option-group">
+                    <label for="claude-key">API Key:</label>
+                    <div class="api-key-container">
+                        <input type="password" id="claude-key" class="api-key-input" placeholder="输入Claude API Key" />
+                        <span class="toggle-password" id="toggle-claude-key">👁️</span>
+                        <button class="button secondary-button test-button" id="test-claude">测试连接</button>
+                    </div>
+                    <p class="help-text">从 <a href="https://console.anthropic.com/" target="_blank">Anthropic控制台</a> 获取API Key</p>
+                </div>
+                <div class="option-group">
+                    <label for="claude-model">模型版本:</label>
+                    <div class="model-select-container">
+                        <select id="claude-model" class="model-select">
+                            <option value="claude-3-5-sonnet-20240620">claude-3-5-sonnet-20240620</option>
+                            <option value="claude-3-opus-20240229">claude-3-opus-20240229</option>
+                            <option value="claude-3-sonnet-20240229">claude-3-sonnet-20240229</option>
+                            <option value="claude-3-haiku-20240307">claude-3-haiku-20240307</option>
+                        </select>
+                    </div>
+                    <p class="help-text">从Anthropic官网获取的可用模型列表</p>
+                </div>
+            </div>
+            
+            <div class="card model-config" id="gemini-config" style="display:none">
+                <div class="card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M21 16V8.00002C20.9996 7.6493 20.9071 7.30483 20.7315 7.00119C20.556 6.69754 20.3037 6.44539 20 6.27002L13 2.27002C12.696 2.09449 12.3511 2.00208 12 2.00208C11.6489 2.00208 11.304 2.09449 11 2.27002L4 6.27002C3.69626 6.44539 3.44398 6.69754 3.26846 7.00119C3.09294 7.30483 3.00036 7.6493 3 8.00002V16C3.00036 16.3508 3.09294 16.6952 3.26846 16.9989C3.44398 17.3025 3.69626 17.5547 4 17.73L11 21.73C11.304 21.9056 11.6489 21.998 12 21.998C12.3511 21.998 12.696 21.9056 13 21.73L20 17.73C20.3037 17.5547 20.556 17.3025 20.7315 16.9989C20.9071 16.6952 20.9996 16.3508 21 16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M3.27002 6.96001L12 12L20.73 6.96001" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M12 22.08V12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Gemini API配置</span>
+                </div>
+                <div class="option-group">
+                    <label for="gemini-url">API URL:</label>
+                    <input type="text" id="gemini-url" value="https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent" placeholder="输入Gemini API URL" />
+                    <p class="help-text">默认为: https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent</p>
+                </div>
+                <div class="option-group">
+                    <label for="gemini-key">API Key:</label>
+                    <div class="api-key-container">
+                        <input type="password" id="gemini-key" class="api-key-input" placeholder="输入Gemini API Key" />
+                        <span class="toggle-password" id="toggle-gemini-key">👁️</span>
+                        <button class="button secondary-button test-button" id="test-gemini">测试连接</button>
+                    </div>
+                    <p class="help-text">从 <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a> 获取API Key</p>
+                </div>
+                <div class="option-group">
+                    <label for="gemini-model">模型版本:</label>
+                    <div class="model-select-container">
+                        <select id="gemini-model" class="model-select">
+                            <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                            <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                            <option value="gemini-1.0-pro">gemini-1.0-pro</option>
+                        </select>
+                    </div>
+                    <p class="help-text">从Google AI Studio获取的可用模型列表</p>
+                </div>
+            </div>
+            
+            <div class="card model-config" id="custom-config" style="display:none">
+                <div class="card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M21 16V8.00002C20.9996 7.6493 20.9071 7.30483 20.7315 7.00119C20.556 6.69754 20.3037 6.44539 20 6.27002L13 2.27002C12.696 2.09449 12.3511 2.00208 12 2.00208C11.6489 2.00208 11.304 2.09449 11 2.27002L4 6.27002C3.69626 6.44539 3.44398 6.69754 3.26846 7.00119C3.09294 7.30483 3.00036 7.6493 3 8.00002V16C3.00036 16.3508 3.09294 16.6952 3.26846 16.9989C3.44398 17.3025 3.69626 17.5547 4 17.73L11 21.73C11.304 21.9056 11.6489 21.998 12 21.998C12.3511 21.998 12.696 21.9056 13 21.73L20 17.73C20.3037 17.5547 20.556 17.3025 20.7315 16.9989C20.9071 16.6952 20.9996 16.3508 21 16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M3.27002 6.96001L12 12L20.73 6.96001" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M12 22.08V12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>自定义API配置 (OpenAI兼容)</span>
+                </div>
+                <div class="option-group">
+                    <label for="custom-url">API URL:</label>
+                    <input type="text" id="custom-url" placeholder="输入自定义API URL" />
+                    <p class="help-text">例如: https://api.openai.com/v1/chat/completions 或其他兼容的端点</p>
+                </div>
+                <div class="option-group">
+                    <label for="custom-key">API Key:</label>
+                    <div class="api-key-container">
+                        <input type="password" id="custom-key" class="api-key-input" placeholder="输入API Key" />
+                        <span class="toggle-password" id="toggle-custom-key">👁️</span>
+                        <button class="button secondary-button test-button" id="test-custom">测试连接</button>
+                    </div>
+                    <p class="help-text">必须是有效的API访问密钥</p>
+                </div>
+                <div class="option-group">
+                    <label for="custom-model">模型名称:</label>
+                    <input type="text" id="custom-model" placeholder="输入模型名称" value="custom-model" />
+                    <p class="help-text">例如: gpt-3.5-turbo, gpt-4, llama3 等</p>
+                </div>
+                <div class="option-group">
+                    <label for="custom-request-format">自定义请求格式 (可选):</label>
+                    <textarea id="custom-request-format" placeholder='{"model":"__MODEL__","messages":[{"role":"user","content":"__PROMPT__"}],"max_tokens":__MAX_TOKENS__,"temperature":__TEMPERATURE__}'></textarea>
+                    <p class="help-text">使用占位符: __PROMPT__, __MODEL__, __TEMPERATURE__, __MAX_TOKENS__</p>
+                </div>
+                <div class="option-group">
+                    <label for="custom-response-path">响应文本路径 (可选):</label>
+                    <input type="text" id="custom-response-path" placeholder="例如: choices.0.message.content" />
+                    <p class="help-text">使用点符号指定响应JSON中文本的路径。不填写时会自动尝试常见路径。</p>
                 </div>
             </div>
             
