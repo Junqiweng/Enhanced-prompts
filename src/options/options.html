@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI文本优化 - 高级设置</title>
+    <link rel="stylesheet" href="../styles/shared.css">
     <style>
         :root {
             --primary-color: #1a73e8;
@@ -479,6 +480,9 @@
                     </div>
                     <p class="help-text">从XAI官网获取的可用模型列表</p>
                 </div>
+                <div class="option-group">
+                    <button id="refresh-grok-models" class="button secondary-button">刷新列表</button>
+                </div>
             </div>
             
             <div class="card model-config" id="claude-config" style="display:none">
@@ -516,6 +520,9 @@
                     </div>
                     <p class="help-text">从Anthropic官网获取的可用模型列表</p>
                 </div>
+                <div class="option-group">
+                    <button id="refresh-claude-models" class="button secondary-button">刷新列表</button>
+                </div>
             </div>
             
             <div class="card model-config" id="gemini-config" style="display:none">
@@ -551,6 +558,9 @@
                         </select>
                     </div>
                     <p class="help-text">从Google AI Studio获取的可用模型列表</p>
+                </div>
+                <div class="option-group">
+                    <button id="refresh-gemini-models" class="button secondary-button">刷新列表</button>
                 </div>
             </div>
             
