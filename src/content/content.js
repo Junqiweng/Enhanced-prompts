@@ -1,410 +1,592 @@
-// 添加文本缓存
+/**
+ * Debounce function to limit the rate at which a function can fire.
+ * @param {function} func - The function to debounce.
+ * @param {number} wait - The debounce delay in milliseconds.
+ * @param {boolean} immediate - Fire immediately on the leading edge.
+ * @returns {function} The debounced function.
+ */
+function debounce(func, wait, immediate) {
+	var timeout;
+	return function() {
+		var context = this, args = arguments;
+		var later = function() {
+			timeout = null;
+			if (!immediate) func.apply(context, args);
+		};
+		var callNow = immediate && !timeout;
+		clearTimeout(timeout);
+		timeout = setTimeout(later, wait);
+		if (callNow) func.apply(context, args);
+	};
+};
+
+
+// Simple in-memory cache for recent optimization results (client-side)
 class TextCache {
-    constructor(maxSize = 20) {
+    constructor(maxSize = 30) { // Increased size slightly
         this.cache = new Map();
         this.maxSize = maxSize;
+        this.keys = []; // Keep track of insertion order for eviction
     }
-    
+
     get(key) {
         return this.cache.get(key);
     }
-    
+
     has(key) {
         return this.cache.has(key);
     }
-    
+
     set(key, value) {
-        // 如果缓存已满，删除最早添加的项
         if (this.cache.size >= this.maxSize) {
-            const firstKey = this.cache.keys().next().value;
-            this.cache.delete(firstKey);
+            const oldestKey = this.keys.shift(); // Get the oldest key
+            this.cache.delete(oldestKey);
+            console.log('Cache limit reached, evicted:', oldestKey);
         }
         this.cache.set(key, value);
+        this.keys.push(key); // Add new key to the end
+    }
+
+    clear() {
+        this.cache.clear();
+        this.keys = [];
+        console.log('Client-side cache cleared.');
     }
 }
 
-// 输入框检测和处理逻辑
+// Main class for detecting inputs and managing optimization buttons
 class InputDetector {
     constructor() {
-        this.observedInputs = new Set();
-        this.textCache = new TextCache(30); // 缓存最近30个请求结果
-        this.initMutationObserver();
-        this.addExistingInputs();
-        console.log('AI文本优化器已初始化');
+        this.observedInputs = new WeakSet(); // Use WeakSet to avoid memory leaks if elements are removed
+        this.textCache = new TextCache();
+        this.mutationObserver = null;
+        this.debouncedUpdatePosition = null; // To store debounced function instance
+        this.init();
+        console.log('AI Text Optimizer: Input Detector initialized.');
     }
 
-    // 初始化 MutationObserver 来监听 DOM 变化
+    init() {
+        this.initMutationObserver();
+        this.addExistingInputs();
+        // Listen for messages from background/popup (e.g., clear cache on settings change)
+        chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+            if (request.action === 'settingsUpdated') {
+                console.log('Settings updated signal received in content script, clearing client cache.');
+                this.textCache.clear();
+                sendResponse({ success: true });
+            }
+            return true; // Keep channel open for async response if needed elsewhere
+        });
+    }
+
+    // Initialize MutationObserver to watch for new inputs added to the DOM
     initMutationObserver() {
-        const observer = new MutationObserver((mutations) => {
-            for (const mutation of mutations) {
+        this.mutationObserver = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
                 if (mutation.addedNodes.length) {
                     this.processNewNodes(mutation.addedNodes);
                 }
-            }
+                // Optionally, handle attribute changes if needed (e.g., contenteditable toggled)
+                // if (mutation.type === 'attributes' && mutation.attributeName === 'contenteditable') { ... }
+            });
         });
 
-        observer.observe(document.body, {
+        this.mutationObserver.observe(document.body, {
             childList: true,
-            subtree: true
+            subtree: true,
+            attributes: false // Set to true if watching attribute changes like contenteditable
         });
     }
 
-    // 处理新添加的节点
+    // Process nodes added to the DOM
     processNewNodes(nodes) {
         nodes.forEach(node => {
+            // Check if the node itself is an input or contains inputs
             if (node.nodeType === Node.ELEMENT_NODE) {
-                this.checkForInputs(node);
+                 if (this.isTargetInput(node)) {
+                     this.attachInputHandler(node);
+                 } else if (node.querySelectorAll) { // Check if querySelectorAll exists ( robustness)
+                    const inputs = node.querySelectorAll('input[type="text"], textarea, [contenteditable="true"]');
+                    inputs.forEach(input => this.attachInputHandler(input));
+                 }
             }
         });
     }
 
-    // 检查并处理输入框
-    checkForInputs(element) {
-        const inputs = element.querySelectorAll('input[type="text"], textarea, [contenteditable="true"]');
-        inputs.forEach(input => {
-            if (!this.observedInputs.has(input)) {
-                this.attachInputHandler(input);
-                this.observedInputs.add(input);
-            }
-        });
+    // Check if an element is a target input field
+    isTargetInput(element) {
+        const tagName = element.tagName.toLowerCase();
+        return (
+            (tagName === 'input' && element.type === 'text') ||
+            tagName === 'textarea' ||
+            element.isContentEditable // Checks contenteditable="true"
+        );
     }
 
-    // 处理页面加载时已存在的输入框
+    // Check existing inputs when the script loads
     addExistingInputs() {
-        this.checkForInputs(document.body);
+        const inputs = document.querySelectorAll('input[type="text"], textarea, [contenteditable="true"]');
+        inputs.forEach(input => this.attachInputHandler(input));
+        console.log(`Found ${inputs.length} existing input fields.`);
     }
 
-    // 为输入框添加优化按钮和事件处理
+    // Attach the optimizer button and event listeners to an input field
     attachInputHandler(input) {
-        // 创建优化按钮
-        const optimizeButton = document.createElement('button');
-        optimizeButton.className = 'ai-text-optimizer-button';
-        optimizeButton.innerHTML = '优化文本';
-        optimizeButton.style.display = 'none';
-
-        // 只在页面初次加载时缓存原始内容
-        if (!input.dataset.original) {
-            input.dataset.original = this.getInputText(input);
+        if (this.observedInputs.has(input) || input.dataset.aiOptimizerAttached) {
+            return; // Already processed or marked
         }
-        input.dataset.optimized = 'false';
 
-        // 设置按钮样式和位置
-        this.setButtonPosition(input, optimizeButton);
+        console.log('Attaching optimizer to:', input);
+        this.observedInputs.add(input);
+        input.dataset.aiOptimizerAttached = 'true'; // Mark as attached
 
-        // 输入内容变更时，重置原文缓存和按钮状态
-        const resetOptimizeState = () => {
-            // 只有用户手动输入时才更新原文
-            input.dataset.original = this.getInputText(input);
-            input.dataset.optimized = 'false';
-            optimizeButton.disabled = false;
-            optimizeButton.innerHTML = '优化文本';
+        const optimizeButton = this.createOptimizeButton();
+        input.dataset.originalText = this.getInputText(input); // Store initial text
+
+        // Append button to body to ensure consistent positioning context
+        document.body.appendChild(optimizeButton);
+
+        // Debounced position updater
+        const updatePosition = this.createPositionUpdater(input, optimizeButton);
+        const debouncedUpdatePosition = debounce(updatePosition, 150); // Debounce scroll/resize updates
+        this.debouncedUpdatePosition = debouncedUpdatePosition; // Store for potential cleanup
+
+        // Event listeners for showing/hiding/positioning the button
+        const showButton = () => {
+            // Only show if the input is still in the DOM
+            if (document.body.contains(input)) {
+                optimizeButton.style.display = 'flex'; // Use 'flex' from CSS
+                updatePosition(); // Position immediately on focus/input
+            } else {
+                 // Input removed from DOM, cleanup button and listeners
+                 this.cleanupInputHandler(input, optimizeButton, debouncedUpdatePosition);
+            }
         };
-        input.addEventListener('input', resetOptimizeState);
-        input.addEventListener('change', resetOptimizeState);
-
-        // 添加事件监听器
-        input.addEventListener('focus', () => optimizeButton.style.display = 'block');
-        input.addEventListener('blur', () => {
+        const hideButton = () => {
+            // Delay hiding to allow clicking the button
             setTimeout(() => {
                 if (!optimizeButton.matches(':hover')) {
                     optimizeButton.style.display = 'none';
                 }
-            }, 200);
-        });
+            }, 250);
+        };
 
-        // 处理优化按钮点击事件
+        input.addEventListener('focus', showButton);
+        input.addEventListener('input', showButton); // Show button immediately on input
+        input.addEventListener('blur', hideButton);
+        optimizeButton.addEventListener('mouseenter', () => clearTimeout(hideButton)); // Keep visible if mouse enters button
+        optimizeButton.addEventListener('mouseleave', hideButton); // Hide if mouse leaves button
+        window.addEventListener('scroll', debouncedUpdatePosition, { passive: true }); // Use passive listener for scroll
+        window.addEventListener('resize', debouncedUpdatePosition);
+
+        // Reset state on manual input
+        const resetOptimizeState = () => {
+            input.dataset.originalText = this.getInputText(input); // Update original text on change
+            optimizeButton.disabled = false;
+            optimizeButton.innerHTML = '优化文本'; // Reset text
+            optimizeButton.className = 'ai-text-optimizer-button'; // Reset class
+        };
+        input.addEventListener('input', debounce(resetOptimizeState, 300)); // Debounce reset slightly
+
+
+        // Button click handler
         optimizeButton.addEventListener('click', async (event) => {
-            // 阻止事件冒泡和默认行为
             event.preventDefault();
             event.stopPropagation();
 
-            const originalText = input.dataset.original || this.getInputText(input);
+            const textToOptimize = this.getInputText(input); // Get current text
+            const originalForCache = input.dataset.originalText || textToOptimize; // Use original if available for cache consistency
 
-            if (originalText) {
-                try {
-                    optimizeButton.disabled = true;
-                    optimizeButton.innerHTML = '优化中...';
-                    // 移除可能的其他状态类
-                    optimizeButton.classList.remove('ai-text-optimizer-button-success', 'ai-text-optimizer-button-error');
-
-                    // 先检查本地缓存
-                    const cacheKey = originalText; // 使用完整文本作为缓存键
-                    if (this.textCache.has(cacheKey)) {
-                        // 使用缓存的结果
-                        const cachedResult = this.textCache.get(cacheKey);
-                        this.setInputText(input, cachedResult);
-                        input.dataset.optimized = 'true';
-                        
-                        // 更新UI状态
-                        optimizeButton.classList.add('ai-text-optimizer-button-success');
-                        optimizeButton.innerHTML = '优化成功';
-                        
-                        setTimeout(() => {
-                            optimizeButton.classList.remove('ai-text-optimizer-button-success');
-                            optimizeButton.innerHTML = '优化文本';
-                            optimizeButton.disabled = false;
-                        }, 1000);
-                        
-                        return;
-                    }
-
-                    // 发送消息给background script处理API请求
-                    try {
-                        const result = await chrome.runtime.sendMessage({
-                            action: 'optimizeText',
-                            text: originalText
-                        });
-
-                        if (result && result.optimizedText) {
-                            // 添加到缓存
-                            this.textCache.set(cacheKey, result.optimizedText);
-                            
-                            // 设置优化后的文本
-                            this.setInputText(input, result.optimizedText);
-                            input.dataset.optimized = 'true';
-                            
-                            // 添加成功状态样式
-                            optimizeButton.classList.add('ai-text-optimizer-button-success');
-                            optimizeButton.innerHTML = '优化成功';
-                            
-                            // 恢复原样式
-                            setTimeout(() => {
-                                optimizeButton.classList.remove('ai-text-optimizer-button-success');
-                                optimizeButton.innerHTML = '优化文本';
-                            }, 1000);
-                        } else if (result && result.error) {
-                            console.error('优化失败:', result.error);
-                            
-                            // 添加错误状态样式
-                            optimizeButton.classList.add('ai-text-optimizer-button-error');
-                            optimizeButton.innerHTML = '优化失败';
-                            
-                            // 2秒后恢复原样式和提示错误
-                            setTimeout(() => {
-                                optimizeButton.classList.remove('ai-text-optimizer-button-error');
-                                optimizeButton.innerHTML = '优化文本';
-                                alert(`优化失败: ${result.error}`);
-                            }, 2000);
-                        } else {
-                            console.error('未收到有效的优化结果');
-                            
-                            // 添加错误状态样式
-                            optimizeButton.classList.add('ai-text-optimizer-button-error');
-                            optimizeButton.innerHTML = '未收到结果';
-                            
-                            // 2秒后恢复原样式和提示错误
-                            setTimeout(() => {
-                                optimizeButton.classList.remove('ai-text-optimizer-button-error');
-                                optimizeButton.innerHTML = '优化文本';
-                                alert('未收到有效的优化结果，请检查API设置');
-                            }, 2000);
-                        }
-                    } catch (chromeError) {
-                        console.error('Chrome runtime错误:', chromeError);
-                        
-                        // 添加错误状态样式
-                        optimizeButton.classList.add('ai-text-optimizer-button-error');
-                        optimizeButton.innerHTML = '连接错误';
-                        
-                        // 2秒后恢复原样式
-                        setTimeout(() => {
-                            optimizeButton.classList.remove('ai-text-optimizer-button-error');
-                            optimizeButton.innerHTML = '优化文本';
-                            
-                            // 判断是否是上下文失效错误
-                            if (chromeError.message && chromeError.message.includes('Extension context invalidated')) {
-                                alert('扩展上下文已失效，请刷新页面后重试');
-                            } else {
-                                alert(`通信错误: ${chromeError.message || '未知错误'}`);
-                            }
-                        }, 2000);
-                    }
-                } catch (error) {
-                    console.error('文本优化过程中出错:', error);
-                    
-                    // 添加错误状态样式
-                    optimizeButton.classList.add('ai-text-optimizer-button-error');
-                    optimizeButton.innerHTML = '处理错误';
-                    
-                    // 2秒后恢复原样式
-                    setTimeout(() => {
-                        optimizeButton.classList.remove('ai-text-optimizer-button-error');
-                        optimizeButton.innerHTML = '优化文本';
-                        alert(`优化失败: ${error.message || '未知错误'}`);
-                    }, 2000);
-                } finally {
-                    // 仍然在finally解除禁用状态，但注意之前的setTimeout会覆盖内容
-                    setTimeout(() => {
-                        optimizeButton.disabled = false;
-                    }, 2000);
-                }
-            } else {
-                console.log('没有文本需要优化');
-                
-                // 添加错误状态样式
-                optimizeButton.classList.add('ai-text-optimizer-button-error');
-                optimizeButton.innerHTML = '无文本';
-                
-                // 2秒后恢复原样式
-                setTimeout(() => {
-                    optimizeButton.classList.remove('ai-text-optimizer-button-error');
-                    optimizeButton.innerHTML = '优化文本';
-                    alert('请先输入文本再进行优化');
-                }, 2000);
+            if (!textToOptimize || textToOptimize.trim().length < 5) {
+                 this.showButtonStatus(optimizeButton, '无内容', 'error', '请输入至少5个字符');
+                 return;
             }
-        });
 
-        // 将按钮添加到页面
-        document.body.appendChild(optimizeButton);
-        console.log('优化按钮已添加到输入框');
-    }
+            // -- Start Optimization --
+            optimizeButton.disabled = true;
+            optimizeButton.innerHTML = '优化中...';
+            optimizeButton.className = 'ai-text-optimizer-button'; // Reset class before adding new state
 
-    // 设置优化按钮的位置
-    setButtonPosition(input, button) {
-        const updatePosition = () => {
-            const rect = input.getBoundingClientRect();
-            button.style.position = 'fixed';
-            button.style.top = `${rect.top + rect.height/2 - button.offsetHeight/2}px`;
-            button.style.left = `${rect.right + 10}px`;
-        };
+            // Check client-side cache first (using original text as key)
+            const cacheKey = originalForCache;
+             if (this.textCache.has(cacheKey)) {
+                 const cachedResult = this.textCache.get(cacheKey);
+                 console.log('Using client-side cache:', cachedResult);
+                 // Check if cached result itself was an error
+                 if (!cachedResult.error) {
+                     this.setInputText(input, cachedResult.optimizedText);
+                     this.showButtonStatus(optimizeButton, '优化成功', 'success');
+                     return; // Exit after using cache
+                 } else {
+                      console.log('Cached item was an error, proceeding to API call.');
+                 }
+             }
 
-        // 初始定位
-        updatePosition();
-
-        // 监听滚动和调整大小事件来更新位置
-        window.addEventListener('scroll', updatePosition);
-        window.addEventListener('resize', updatePosition);
-    }
-
-    // 获取输入框的文本内容
-    getInputText(input) {
-        return input.value || input.textContent || '';
-    }
-
-    // 设置输入框的文本内容
-    setInputText(input, text) {
-        // 确保文本真的有变化
-        const originalText = this.getInputText(input);
-        
-        // 如果文本相同，强制添加空格再移除以触发变化
-        if (originalText === text) {
-            text = text + ' ';
-        }
-        
-        // 判断输入类型并设置值
-        try {
-            if (input.tagName.toLowerCase() === 'textarea' || input.tagName.toLowerCase() === 'input') {
-                // 输入框类型
-                input.value = text;
-                
-                // 手动触发input事件，确保其他可能的事件监听器能感知到变化
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-                
-                // 检查值是否成功设置
-                if (input.value !== text) {
-                    // 尝试其他方法设置值
-                    try {
-                        input.defaultValue = text;
-                        // 使用DOM直接修改
-                        if ('setRangeText' in input) {
-                            input.setRangeText(text, 0, input.value.length);
-                        }
-                    } catch (err) {
-                        // 设置失败
-                    }
-                }
-            } else if (input.isContentEditable) {
-                // contenteditable元素
-                input.textContent = text;
-                
-                // 触发contenteditable内容变更事件
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            } else {
-                // 其他情况，尝试所有方法
-                if ('value' in input) {
-                    input.value = text;
-                } else {
-                    input.textContent = text;
-                }
-                
-                // 尝试多种事件触发
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-        } catch (error) {
-            // 紧急备用方案：尝试直接设置innerHTML
+            // Send to background script for API call
             try {
-                input.innerHTML = text;
-            } catch (innerError) {
-                // 备用方法失败
+                const result = await chrome.runtime.sendMessage({
+                    action: 'optimizeText',
+                    text: textToOptimize
+                });
+
+                console.log('Optimization result from background:', result);
+
+                if (result && result.error) {
+                    // Handle errors reported by background script
+                    this.showButtonStatus(optimizeButton, '优化失败', 'error', result.message);
+                    // Cache the error state if desired (or not, to allow retries)
+                    // this.textCache.set(cacheKey, { error: true, message: result.message });
+                } else if (result && result.optimizedText) {
+                    // Success
+                    this.setInputText(input, result.optimizedText);
+                    // Cache the successful result
+                    this.textCache.set(cacheKey, { optimizedText: result.optimizedText });
+                     this.showButtonStatus(optimizeButton, '优化成功', 'success');
+                } else {
+                    // Unexpected response
+                    console.error('Invalid response structure received:', result);
+                    this.showButtonStatus(optimizeButton, '响应无效', 'error', '从后台收到的响应格式不正确。');
+                }
+
+            } catch (error) {
+                console.error('Error sending message to background or processing result:', error);
+                let message = '与后台脚本通信失败。';
+                if (error.message?.includes('Extension context invalidated')) {
+                    message = '扩展已失效，请刷新页面。';
+                     // Optionally disable the button permanently or show a persistent error
+                } else if (error.message) {
+                    message += ` (${error.message})`;
+                }
+                this.showButtonStatus(optimizeButton, '通信错误', 'error', message);
+            } finally {
+                // Re-enable button after a short delay (allowing status message to be seen)
+                 // The showButtonStatus function handles the timed reset now
+                // setTimeout(() => { optimizeButton.disabled = false; }, 2000); // Removed, handled by showButtonStatus
             }
+        });
+    }
+
+    // Create the optimizer button element
+    createOptimizeButton() {
+        const button = document.createElement('button');
+        button.className = 'ai-text-optimizer-button';
+        button.innerHTML = '优化文本'; // Set initial text
+        button.style.display = 'none'; // Initially hidden
+        button.type = 'button'; // Prevent form submission
+        return button;
+    }
+
+    // Creates the function responsible for updating the button's position
+    createPositionUpdater(input, button) {
+        return () => {
+            // Check if both elements are still in the DOM
+            if (!document.body.contains(input) || !document.body.contains(button)) {
+                return; // Don't try to update position if elements are gone
+            }
+            try {
+                const rect = input.getBoundingClientRect();
+                 // Position relative to viewport
+                button.style.position = 'fixed';
+                // Center vertically, place to the right with padding
+                button.style.top = `${rect.top + window.scrollY + (rect.height / 2) - (button.offsetHeight / 2)}px`;
+                button.style.left = `${rect.left + window.scrollX + rect.width + 8}px`; // 8px gap
+                button.style.zIndex = '99999'; // Ensure high z-index
+            } catch (e) {
+                console.error("Error calculating button position:", e);
+                 // Hide button if positioning fails?
+                 button.style.display = 'none';
+            }
+        };
+    }
+
+     // Show status on the button itself and reset after a delay
+     showButtonStatus(button, text, statusType = 'info', alertMessage = null) {
+         // Ensure button exists
+         if (!button || !document.body.contains(button)) return;
+
+         const originalText = '优化文本';
+         button.innerHTML = text;
+         button.classList.remove('ai-text-optimizer-button-success', 'ai-text-optimizer-button-error'); // Clear previous states
+
+         if (statusType === 'success') {
+             button.classList.add('ai-text-optimizer-button-success');
+         } else if (statusType === 'error') {
+             button.classList.add('ai-text-optimizer-button-error');
+             if (alertMessage) {
+                 // Use a less intrusive notification method if possible, alert can be annoying
+                  console.warn('Optimization Alert:', alertMessage); // Log warning
+                 // Consider creating a custom tooltip/toast notification instead of alert
+                 // For now, using alert as per original code, but recommend changing
+                 // alert(`优化失败: ${alertMessage}`); // Uncomment if alert is desired
+             }
+         }
+
+         // Reset button state after a delay
+         setTimeout(() => {
+             // Check if button still exists before resetting
+             if (document.body.contains(button)) {
+                 button.innerHTML = originalText;
+                 button.classList.remove('ai-text-optimizer-button-success', 'ai-text-optimizer-button-error');
+                 button.disabled = false; // Re-enable after status display
+             }
+         }, 2500); // 2.5 seconds visibility for status
+     }
+
+
+    // Get text from different input types
+    getInputText(input) {
+        if (!input) return '';
+        if (input.isContentEditable) {
+            return input.textContent || '';
+        }
+        return input.value || '';
+    }
+
+    // Set text for different input types, attempting to trigger necessary events
+    setInputText(input, text) {
+        if (!input) return;
+
+        const currentText = this.getInputText(input);
+        if (currentText === text) {
+            console.log("Text is the same, skipping update.");
+            return; // Don't update if text hasn't changed
+        }
+
+        console.log(`Setting text for ${input.tagName}: "${text.substring(0, 50)}..."`);
+
+        try {
+             if (input.tagName.toLowerCase() === 'textarea' || input.tagName.toLowerCase() === 'input') {
+                 input.value = text;
+             } else if (input.isContentEditable) {
+                 input.textContent = text;
+             } else {
+                 // Fallback for unknown types (less reliable)
+                 if ('value' in input) input.value = text;
+                 else if ('textContent' in input) input.textContent = text;
+                 else input.innerHTML = text; // Least preferred
+             }
+
+             // Trigger events to notify the page/frameworks of the change
+             input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+             input.dispatchEvent(new Event('change', { bubbles: true, cancelable: false })); // Change event often follows input
+
+             // For contenteditable, focus/blur might be needed sometimes
+             if (input.isContentEditable) {
+                 input.focus();
+                 // Move cursor to end (optional, might be desired UX)
+                  const range = document.createRange();
+                  const sel = window.getSelection();
+                  range.selectNodeContents(input);
+                  range.collapse(false); // false collapses to the end
+                  sel.removeAllRanges();
+                  sel.addRange(range);
+                // input.blur(); // Blur immediately after focus? Might not be needed.
+             }
+
+             // Verify if the value was set (useful for debugging complex inputs)
+             // setTimeout(() => {
+             //      if (this.getInputText(input) !== text) {
+             //           console.warn("Input value may not have been set correctly for:", input);
+             //      }
+             // }, 50); // Check shortly after
+
+        } catch (error) {
+            console.error(`Failed to set text for input (${input.tagName}):`, error);
+             // Optionally try innerHTML as a last resort if direct setting failed
+             try {
+                 input.innerHTML = text;
+                 input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+             } catch (innerError) {
+                  console.error("Setting innerHTML also failed:", innerError);
+             }
+        }
+    }
+
+     // Cleanup listeners and button if the input is removed
+     cleanupInputHandler(input, button, debouncedUpdater) {
+         console.log('Cleaning up optimizer for removed input:', input);
+         if (button && button.parentNode) {
+             button.parentNode.removeChild(button);
+         }
+          window.removeEventListener('scroll', debouncedUpdater);
+          window.removeEventListener('resize', debouncedUpdater);
+          // Input listeners are usually cleaned up automatically when the element is removed,
+          // but explicit removal can be added if needed (e.g., if using anonymous functions was avoided).
+          // We used WeakSet for observedInputs, so no manual removal needed there.
+     }
+
+
+    // Disconnect the observer when the script is unloaded (though content scripts usually run until page unload)
+    disconnect() {
+        if (this.mutationObserver) {
+            this.mutationObserver.disconnect();
+            console.log('MutationObserver disconnected.');
         }
     }
 }
 
-// 监听来自background的消息
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log('Content script收到消息:', request);
-    if (request.action === 'updateSettings') {
-        console.log('收到设置更新:', request.settings);
-        sendResponse({ success: true });
-    }
-    return true;
-});
+// --- Connection Status Check ---
 
-// 添加连接状态检查
-function checkExtensionConnection() {
+// Stores the ID of the interval timer
+let connectionCheckIntervalId = null;
+let lastPingTime = 0;
+const PING_INTERVAL = 3 * 60 * 1000; // Check every 3 minutes
+const PING_TIMEOUT = 5000; // 5 seconds for ping response
+
+async function checkExtensionConnection() {
+    // Avoid pinging too frequently
+    if (Date.now() - lastPingTime < PING_INTERVAL / 2) {
+        return;
+    }
+
+    console.log('Checking extension connection...');
+    lastPingTime = Date.now();
+
     try {
-        // 尝试发送简单消息到background以检查连接
-        chrome.runtime.sendMessage({ action: 'ping' }, response => {
-            if (chrome.runtime.lastError) {
-                console.error('扩展连接错误:', chrome.runtime.lastError.message);
-                // 如果错误是由于上下文失效导致的，提示刷新页面
-                if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
-                    const extensionError = document.createElement('div');
-                    extensionError.style.position = 'fixed';
-                    extensionError.style.top = '10px';
-                    extensionError.style.right = '10px';
-                    extensionError.style.backgroundColor = '#FFD2D2';
-                    extensionError.style.padding = '10px';
-                    extensionError.style.borderRadius = '5px';
-                    extensionError.style.zIndex = '10000';
-                    extensionError.textContent = 'AI文本优化器已失效，请刷新页面';
-                    document.body.appendChild(extensionError);
-                    
-                    // 5秒后自动移除提示
-                    setTimeout(() => {
-                        if (extensionError.parentNode) {
-                            extensionError.parentNode.removeChild(extensionError);
-                        }
-                    }, 5000);
-                }
-            } else {
-                console.log('扩展连接正常');
-            }
-        });
+        // Check if runtime is available (basic check for context invalidation)
+        if (!chrome.runtime || !chrome.runtime.sendMessage) {
+            console.error('Extension context seems invalidated (chrome.runtime missing).');
+            showExtensionError('AI文本优化器连接中断，请刷新页面。');
+            if (connectionCheckIntervalId) clearInterval(connectionCheckIntervalId); // Stop checking
+            return;
+        }
+
+         // Use a timeout for the ping message
+         const responsePromise = chrome.runtime.sendMessage({ action: 'ping' });
+         const timeoutPromise = new Promise((_, reject) =>
+             setTimeout(() => reject(new Error('Ping timed out')), PING_TIMEOUT)
+         );
+
+         const response = await Promise.race([responsePromise, timeoutPromise]);
+
+
+        // If we get here, sendMessage didn't throw immediately and didn't timeout
+        if (chrome.runtime.lastError) {
+            // This catches errors like "Receiving end does not exist" if background is inactive
+            console.error('Extension connection error (runtime.lastError):', chrome.runtime.lastError.message);
+            showExtensionError(`连接错误: ${chrome.runtime.lastError.message}`);
+             // Consider stopping checks if error is persistent
+             // if (chrome.runtime.lastError.message.includes("Could not establish connection")) {
+             //     if (connectionCheckIntervalId) clearInterval(connectionCheckIntervalId);
+             // }
+        } else if (response && response.status === 'ok') {
+            console.log('Extension connection OK (pong received).');
+            // Optionally remove error message if shown previously
+             removeExtensionError();
+        } else {
+             // Got a response, but not what we expected
+             console.warn('Unexpected ping response:', response);
+             showExtensionError('收到无效的连接响应。');
+        }
+
     } catch (error) {
-        console.error('检查扩展连接状态失败:', error);
+        // Catches errors from sendMessage itself (e.g., if context is truly gone) or the timeout
+        console.error('Failed to check extension connection:', error);
+         if (error.message === 'Ping timed out') {
+             showExtensionError('连接后台超时，请稍后重试。');
+         } else if (error.message.includes('Extension context invalidated')) {
+            showExtensionError('AI文本优化器连接中断，请刷新页面。');
+             if (connectionCheckIntervalId) clearInterval(connectionCheckIntervalId); // Stop checking
+         } else {
+             showExtensionError(`检查连接失败: ${error.message}`);
+         }
     }
 }
 
-// 页面可见性变化时检查连接
+// --- UI Error Display ---
+
+const ERROR_DIV_ID = 'ai-text-optimizer-error-div';
+
+function showExtensionError(message) {
+    try {
+        let errorDiv = document.getElementById(ERROR_DIV_ID);
+        if (!errorDiv) {
+            errorDiv = document.createElement('div');
+            errorDiv.id = ERROR_DIV_ID;
+            errorDiv.className = 'ai-text-optimizer-error-popup'; // Use a specific class for styling
+            // Apply basic styles directly for robustness if CSS fails
+            Object.assign(errorDiv.style, {
+                position: 'fixed',
+                top: '10px',
+                right: '10px',
+                backgroundColor: '#FFD2D2', // Light red
+                color: '#D93025', // Darker red text
+                padding: '10px 15px',
+                borderRadius: '5px',
+                zIndex: '100000', // Very high z-index
+                boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+            });
+             document.body.appendChild(errorDiv);
+        }
+
+        // Update message and add close button if it doesn't exist
+        if (!errorDiv.querySelector('.close-btn')) {
+            errorDiv.innerHTML = `<span>${message}</span>`; // Use innerHTML to reset content
+            const closeButton = document.createElement('span');
+            closeButton.textContent = '×';
+            closeButton.className = 'close-btn';
+            Object.assign(closeButton.style, {
+                 cursor: 'pointer',
+                 fontWeight: 'bold',
+                 fontSize: '16px',
+                 marginLeft: 'auto', // Push to the right
+                 paddingLeft: '10px'
+            });
+            closeButton.onclick = () => removeExtensionError(); // Use onclick for simplicity here
+            errorDiv.appendChild(closeButton);
+        } else {
+             // Update message if div already exists
+             errorDiv.querySelector('span:first-child').textContent = message;
+        }
+
+        errorDiv.style.display = 'flex'; // Ensure visible
+
+        // Auto-remove after a longer period for errors
+        setTimeout(removeExtensionError, 8000); // 8 seconds
+
+    } catch (e) {
+        console.error('Failed to show extension error:', e);
+    }
+}
+
+function removeExtensionError() {
+    const errorDiv = document.getElementById(ERROR_DIV_ID);
+    if (errorDiv) {
+        errorDiv.style.display = 'none'; // Hide instead of removing to reuse the element
+    }
+}
+
+// --- Initial Execution ---
+
+// Check connection when page becomes visible
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-        console.log('页面变为可见，检查扩展连接');
-        checkExtensionConnection();
+        console.log('Page visible, checking connection (debounced).');
+        // Debounce this check slightly
+        debounce(checkExtensionConnection, 500)();
     }
 });
 
-// 页面加载完成后检查连接
+// Check connection on load
 window.addEventListener('load', () => {
-    console.log('页面加载完成，检查扩展连接');
-    checkExtensionConnection();
+    console.log('Page loaded, checking connection.');
+    // Delay initial check slightly to allow background script to potentially initialize
+    setTimeout(checkExtensionConnection, 1500);
+    // Start periodic checks
+    if (!connectionCheckIntervalId) {
+        connectionCheckIntervalId = setInterval(checkExtensionConnection, PING_INTERVAL);
+    }
 });
 
-// 每5分钟检查一次连接状态
-setInterval(checkExtensionConnection, 300000);
-
-// 初始化输入框检测器
+// Instantiate the detector
 const detector = new InputDetector();
+
+// Optional: Add a listener for when the script/extension is unloaded/disabled
+// window.addEventListener('unload', () => {
+//     if (detector) detector.disconnect();
+//     if (connectionCheckIntervalId) clearInterval(connectionCheckIntervalId);
+// });

@@ -1,16 +1,27 @@
-// AI 模型配置
-const MODEL_NAME = 'grok';
+// Constants
+const MODEL_NAME_GROK = 'grok';
+const DEFAULT_MODEL_GROK = 'grok-3-beta';
+const GROK_API_URL = 'https://api.x.ai/v1/chat/completions';
+const STORAGE_KEYS = {
+    API_KEYS: 'apiKeys',
+    SETTINGS: 'settings',
+    CURRENT_MODEL: 'currentModel', // 虽然现在只用Grok，保留以备扩展
+    MODEL_VARIANT: 'modelVariant',
+};
+const DEFAULT_PROMPT_TEMPLATE = '{text}，请用更专业的语言重新组织这段文字，使其更清晰、更有说服力，同时保持原意。';
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour cache TTL
+const REQUEST_TIMEOUT = 15000; // 15 seconds timeout
 
-// API 配置
+// API Configuration (Simplified for Grok)
 const API_CONFIGS = {
-    grok: {
-        url: 'https://api.x.ai/v1/chat/completions',  // 使用X.AI的API端点
+    [MODEL_NAME_GROK]: {
+        url: GROK_API_URL,
         headers: {
             'Content-Type': 'application/json'
         },
         displayName: 'Grok',
-        defaultModel: 'grok-3-beta',
-        supportedModels: [
+        defaultModel: DEFAULT_MODEL_GROK,
+        supportedModels: [ // Consider fetching this dynamically if possible or updating manually
             'grok-3.5',
             'grok-3-beta',
             'grok-3-mini-beta',
@@ -18,117 +29,82 @@ const API_CONFIGS = {
             'grok-2',
             'grok-1.5'
         ]
-    },
-    gemini: {
-        url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        displayName: 'Gemini',
-        defaultModel: 'gemini-pro'
     }
 };
 
-// 默认提示词模板
-const DEFAULT_PROMPT_TEMPLATE = '{text}，请用更专业的语言重新组织这段文字，使其更清晰、更有说服力，同时保持原意。';
+// Response Cache
+const responseCache = new Map();
 
-// 从存储中加载设置
+/**
+ * Loads settings from chrome storage.
+ * @returns {Promise<object>} Promise resolving to { apiKeys, settings, modelVariant, currentModel }
+ */
 async function loadSettings() {
     try {
-        const result = await chrome.storage.sync.get(['apiKeys', 'settings', 'modelVariant']);
-        console.log('加载设置:', result);
-        return result;
+        // Define default settings structure here for safety
+        const defaults = {
+            [STORAGE_KEYS.API_KEYS]: {},
+            [STORAGE_KEYS.SETTINGS]: { /* Add default settings structure if needed */ },
+            [STORAGE_KEYS.CURRENT_MODEL]: MODEL_NAME_GROK,
+            [STORAGE_KEYS.MODEL_VARIANT]: DEFAULT_MODEL_GROK,
+        };
+        const result = await chrome.storage.sync.get(Object.values(STORAGE_KEYS));
+        console.log('Loaded settings:', result);
+        // Ensure essential keys exist, merging with defaults if necessary (optional but safer)
+         return { ...defaults, ...result };
     } catch (error) {
-        console.error('加载设置失败:', error);
-        return { apiKeys: {}, settings: {}, modelVariant: '' };
+        console.error('Failed to load settings:', error);
+        // Return default structure on error
+        return {
+            [STORAGE_KEYS.API_KEYS]: {},
+            [STORAGE_KEYS.SETTINGS]: {},
+            [STORAGE_KEYS.CURRENT_MODEL]: MODEL_NAME_GROK,
+            [STORAGE_KEYS.MODEL_VARIANT]: DEFAULT_MODEL_GROK,
+        };
     }
 }
 
-// 初始化设置
+// Initialize settings on startup
 loadSettings().then(() => {
-    console.log('设置已初始化');
+    console.log('Settings initialized on startup.');
 });
 
-// 获取提示词
+/**
+ * Gets the prompt string by replacing the placeholder.
+ * @param {string} text - The original text.
+ * @param {string} promptTemplate - The template string.
+ * @returns {string} The formatted prompt.
+ */
 function getPrompt(text, promptTemplate) {
-    // 如果没有提供模板，使用默认模板
-    if (!promptTemplate) {
-        promptTemplate = DEFAULT_PROMPT_TEMPLATE;
+    const template = promptTemplate || DEFAULT_PROMPT_TEMPLATE;
+    return template.replace('{text}', text);
+}
+
+/**
+ * Gets the effective API configuration, merging base and user settings.
+ * @param {object} userSettings - User-specific settings.
+ * @param {string} modelType - The type of model (currently only 'grok').
+ * @returns {object} The final API configuration.
+ */
+function getApiConfig(userSettings = {}, modelType = MODEL_NAME_GROK) {
+    const baseConfig = API_CONFIGS[modelType];
+    if (!baseConfig) {
+        console.error(`No base config found for model type: ${modelType}`);
+        return null; // Or return a default/error state
     }
-    
-    // 替换模板中的占位符
-    return promptTemplate.replace('{text}', text);
-}
+    let config = { ...baseConfig }; // Shallow copy
 
-// 生成一个模拟的优化文本 - 基于原文内容进行实际优化
-function generateOptimizedText(originalText) {
-    // 如果原文为空或太短，返回提示
-    if (!originalText || originalText.length < 5) {
-        return "请输入足够的文本内容进行优化";
-    }
-    // 不返回固定优化内容，提示用户配置API Key
-    return "未检测到可用的AI服务，请在设置中配置API Key以获得真实AI优化结果。";
-}
-
-// 转换Gemini请求格式
-function formatGeminiRequest(prompt, maxTokens = 1000, temperature = 0.7) {
-    return {
-        contents: [
-            {
-                parts: [
-                    { text: prompt }
-                ]
-            }
-        ],
-        generationConfig: {
-            maxOutputTokens: maxTokens,
-            temperature: temperature
-        }
-    };
-}
-
-// 从Gemini响应中提取文本
-function extractGeminiResponse(data) {
-    if (data && data.candidates && data.candidates.length > 0) {
-        const candidate = data.candidates[0];
-        if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-            return candidate.content.parts[0].text || '';
-        }
-    }
-    return '';
-}
-
-// 获取API配置，可能包含用户自定义设置
-function getApiConfig(userSettings = {}, modelType = 'grok') {
-    // 获取基础配置
-    const baseConfig = API_CONFIGS[modelType] || API_CONFIGS.grok;
-    let config = { ...baseConfig };
-    
-    // 如果用户设置中有自定义API配置，使用用户配置
-    if (userSettings && userSettings.apiConfig && userSettings.apiConfig[modelType]) {
+    // Merge user-defined API config if available
+    if (userSettings?.apiConfig?.[modelType]) {
         const customConfig = userSettings.apiConfig[modelType];
-        
-        // 更新URL (如果提供)
-        if (customConfig.url) {
-            config.url = customConfig.url;
-        }
-        
-        // 存储模型版本信息
-        if (customConfig.model) {
-            config.model = customConfig.model;
-        }
+        if (customConfig.url) config.url = customConfig.url;
+        // Note: 'model' (variant) is handled separately via modelVariant setting
     }
-    
     return config;
 }
 
-// 添加响应缓存
-const responseCache = new Map();
+// --- Caching Logic ---
 
-// 缓存有效期（毫秒）
-const CACHE_TTL = 60 * 60 * 1000; // 1小时
-
-// 清理过期缓存
 function cleanExpiredCache() {
     const now = Date.now();
     for (const [key, data] of responseCache.entries()) {
@@ -136,411 +112,377 @@ function cleanExpiredCache() {
             responseCache.delete(key);
         }
     }
+     console.log(`Cache cleanup: ${responseCache.size} items remaining.`);
 }
 
-// 每10分钟清理一次缓存
-setInterval(cleanExpiredCache, 10 * 60 * 1000);
+setInterval(cleanExpiredCache, 10 * 60 * 1000); // Clean cache every 10 minutes
 
-// 计算缓存键
-function getCacheKey(text, modelVariant, temperature) {
-    // 使用完整文本作为缓存键的一部分
-    return `${text}|${modelVariant}|${temperature}`;
+function getCacheKey(text, modelVariant, temperature, promptTemplate) {
+    // Use a more robust key including the template
+    return `${text}|${modelVariant}|${temperature}|${promptTemplate}`;
 }
 
-// 处理文本优化请求
+// --- Core API Call Logic ---
+
+/**
+ * Optimizes the given text using the configured AI model.
+ * @param {string} text - The text to optimize.
+ * @returns {Promise<object>} Promise resolving to { optimizedText: string, debug?: string } or { error: true, message: string, debug?: string }
+ */
 async function optimizeText(text) {
-    console.log('收到优化请求, 文本长度:', text.length);
-    
-    try {
-        const settings = await loadSettings();
-        const apiKeys = settings.apiKeys || {};
-        const userSettings = settings.settings || {};
-        const currentModel = settings.currentModel || 'grok';
-        const modelVariant = settings.modelVariant || '';
-        const temperature = userSettings.temperature || 0.7;
-        
-        // 生成提示词用于日志记录和缓存键
-        const prompt = getPrompt(text, userSettings.promptTemplate);
-        
-        // 检查缓存中是否有响应
-        const cacheKey = getCacheKey(prompt, modelVariant, temperature);
-        if (responseCache.has(cacheKey)) {
-            const cachedData = responseCache.get(cacheKey);
-            console.log('使用缓存的响应');
-            return cachedData.response;
-        }
+    console.log('Optimize request received, text length:', text?.length);
+    if (!text || text.trim().length < 5) {
+         return { error: true, message: "请输入至少5个字符进行优化。" };
+    }
 
-        // 获取API配置和key
-        const apiConfig = getApiConfig(userSettings, currentModel);
-        const apiKey = apiKeys && apiKeys[currentModel];
+    let settingsData;
+    try {
+        settingsData = await loadSettings();
+    } catch (loadError) {
+         console.error("Error loading settings for optimization:", loadError);
+         return { error: true, message: "加载扩展设置失败，请稍后重试。" };
+    }
+
+    const apiKeys = settingsData[STORAGE_KEYS.API_KEYS] || {};
+    const userSettings = settingsData[STORAGE_KEYS.SETTINGS] || {};
+    const currentModel = settingsData[STORAGE_KEYS.CURRENT_MODEL] || MODEL_NAME_GROK; // Default to Grok
+    const modelVariant = settingsData[STORAGE_KEYS.MODEL_VARIANT] || DEFAULT_MODEL_GROK; // Use saved variant or default
+    const temperature = userSettings.temperature ?? 0.7; // Use nullish coalescing
+    const promptTemplate = userSettings.promptTemplate || DEFAULT_PROMPT_TEMPLATE;
+    const maxLength = userSettings.maxLength || 1000;
+
+    // Ensure we are using the Grok model for this logic path
+    if (currentModel !== MODEL_NAME_GROK) {
+        console.warn(`Optimization requested for unsupported model: ${currentModel}. Falling back to no-op.`);
+        return { error: true, message: `当前不支持模型 ${currentModel} 的优化。`, debug: 'Unsupported model fallback' };
+    }
+
+    const prompt = getPrompt(text, promptTemplate);
+    const cacheKey = getCacheKey(prompt, modelVariant, temperature, promptTemplate);
+
+    if (responseCache.has(cacheKey)) {
+        const cachedData = responseCache.get(cacheKey);
+        // Check if cached item is an error or success
+        if (!cachedData.response.error) {
+             console.log('Using cached response for key:', cacheKey);
+             return cachedData.response;
+        } else {
+            console.log('Cached item is an error, skipping cache for key:', cacheKey);
+            // Potentially allow retrying if the cached item was a temporary error
+        }
+    }
+
+    const apiConfig = getApiConfig(userSettings, currentModel);
+    const apiKey = apiKeys[currentModel];
+
+    if (!apiConfig || !apiKey) {
+        console.warn('API Key or Config missing for model:', currentModel);
+        const result = {
+            error: true,
+            message: "请在设置中配置有效的Grok API密钥和URL以启用优化。",
+            debug: 'API Key/Config missing'
+        };
+         // Cache this "configuration error" state, but perhaps with a shorter TTL or specific handling
+        // responseCache.set(cacheKey, { response: result, timestamp: Date.now() }); // Option: Cache config errors
+        return result;
+    }
+
+    // --- Prepare and Send API Request ---
+    const headers = {
+        ...apiConfig.headers, // Base headers
+        'Authorization': `Bearer ${apiKey.trim()}`
+    };
+
+    const bodyPayload = {
+        model: modelVariant,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: maxLength,
+        temperature: temperature
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+
+    let response;
+    try {
+        console.log(`Sending request to ${apiConfig.url} with model ${modelVariant}`);
+        response = await fetch(apiConfig.url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(bodyPayload),
+            signal: controller.signal,
+            cache: 'no-cache', // Ensure fresh data
+            keepalive: true,
+            priority: 'high',
+        });
+    } catch (fetchError) {
+        clearTimeout(timeoutId);
+        console.error('Fetch API error:', fetchError);
+        let message = '网络请求失败，请检查您的网络连接或API URL配置。';
+        if (fetchError.name === 'AbortError') {
+            message = 'API请求超时，请稍后重试或增加超时时间。';
+        }
+        const result = { error: true, message: message, debug: `Workspace error: ${fetchError.name}` };
+        responseCache.set(cacheKey, { response: result, timestamp: Date.now() }); // Cache network errors
+        return result;
+    } finally {
+         clearTimeout(timeoutId); // Clear timeout regardless of fetch outcome
+    }
+
+    // --- Process API Response ---
+    let responseData;
+    let errorText = '';
+    if (!response.ok) {
+        try {
+            errorText = await response.text();
+            responseData = JSON.parse(errorText); // Try parsing error details
+        } catch (e) {
+            // Error text is not JSON or other parsing error
+            console.warn("Could not parse error response body:", e);
+        }
+        console.error(`API Error: ${response.status}`, errorText);
+        let message = `API请求失败 (HTTP ${response.status})。`;
+         if (response.status === 401 || response.status === 403) {
+            message += ' 请检查您的API密钥是否正确且有效。';
+         } else if (response.status >= 500) {
+             message += ' 服务器内部错误，请稍后重试。';
+         } else if (responseData?.error?.message) {
+            message += ` 错误详情: ${responseData.error.message}`;
+         } else if (errorText) {
+              message += ` 原始错误: ${errorText.substring(0, 100)}${errorText.length > 100 ? '...' : ''}`;
+         }
+
+        const result = { error: true, message: message, debug: `HTTP ${response.status}` };
+        responseCache.set(cacheKey, { response: result, timestamp: Date.now() }); // Cache API errors
+        return result;
+    }
+
+    try {
+        responseData = await response.json();
+        console.log('API Response received:', responseData);
+
         let optimizedText = '';
         let debug = '';
-        
-        if (apiConfig && apiKey) {
-            try {
-                // 构造精简的headers
-                const headers = {
-                    'Content-Type': 'application/json',
-                    'Authorization': currentModel === 'gemini' ? `Bearer ${apiKey.trim()}` : `Bearer ${apiKey.trim()}`
-                };
-                
-                // 根据模型类型创建请求体
-                let bodyPayload;
-                if (currentModel === 'gemini') {
-                    bodyPayload = formatGeminiRequest(prompt, userSettings.maxLength || 1000, temperature);
-                } else {
-                    // 默认使用Grok格式
-                    bodyPayload = {
-                        model: modelVariant || apiConfig.defaultModel,
-                        messages: [{ role: "user", content: prompt }],
-                        max_tokens: userSettings.maxLength || 1000,
-                        temperature: temperature
-                    };
-                }
-                
-                // 使用AbortController设置请求超时
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
-                
-                try {
-                    const response = await fetch(apiConfig.url, {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify(bodyPayload),
-                        signal: controller.signal,
-                        // 添加性能优化选项
-                        cache: 'no-cache',
-                        redirect: 'follow',
-                        referrerPolicy: 'no-referrer',
-                        keepalive: true,  // 维持连接以避免重复建立连接的开销
-                        priority: 'high'  // 指示浏览器优先处理该请求
-                    });
-                    
-                    // 清除超时
-                    clearTimeout(timeoutId);
-                    
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        throw new Error(`HTTP error ${response.status}: ${errorText}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    // 提取优化后的文本，根据不同模型处理
-                    if (currentModel === 'gemini') {
-                        optimizedText = extractGeminiResponse(data);
-                        debug = 'Gemini API调用成功';
-                    } else {
-                        // Grok模型响应处理
-                        if (data.optimizedText) {
-                            optimizedText = data.optimizedText;
-                            debug = 'AI接口调用成功(optimizedText)';
-                        } else if (data.choices && data.choices[0]) {
-                            // OpenAI/Grok 风格响应
-                            if (data.choices[0].message && data.choices[0].message.content) {
-                                optimizedText = data.choices[0].message.content;
-                                debug = 'AI接口调用成功(choices[0].message.content)';
-                            } else if (data.choices[0].text) {
-                                optimizedText = data.choices[0].text;
-                                debug = 'AI接口调用成功(choices[0].text)';
-                            }
-                        } else if (data.text) {
-                            // 简单文本返回
-                            optimizedText = data.text;
-                            debug = 'AI接口调用成功(text)';
-                        }
-                    }
-                    
-                    if (!optimizedText) {
-                        throw new Error('AI接口未返回优化文本');
-                    }
-                    
-                    // 存储响应到缓存
-                    const result = { optimizedText, debug };
-                    responseCache.set(cacheKey, {
-                        response: result,
-                        timestamp: Date.now()
-                    });
-                    
-                    return result;
-                } catch (fetchError) {
-                    // 清除超时
-                    clearTimeout(timeoutId);
-                    
-                    // 处理超时错误
-                    if (fetchError.name === 'AbortError') {
-                        throw new Error('API请求超时，请稍后重试');
-                    }
-                    
-                    // 处理其他错误
-                    throw fetchError;
-                }
-            } catch (apiError) {
-                let errorMsg = "AI服务不可用，请稍后重试。";
-                
-                if (apiError && apiError.message) {
-                    errorMsg += " 错误信息: " + apiError.message;
-                }
-                
-                return { 
-                    optimizedText: errorMsg,
-                    debug: 'API调用过程中出错'
-                };
-            }
-        } else {
-            console.warn('未配置API Key或API信息，使用本地模拟');
-            optimizedText = generateOptimizedText(text);
-            debug = '无API Key，未返回AI结果';
+
+        // Extract optimized text (adjust based on actual Grok API response structure)
+        if (responseData.choices && responseData.choices[0]?.message?.content) {
+            optimizedText = responseData.choices[0].message.content.trim();
+            debug = 'Success (choices[0].message.content)';
+        } else if (responseData.choices && responseData.choices[0]?.text) { // Fallback for older/different formats
+            optimizedText = responseData.choices[0].text.trim();
+             debug = 'Success (choices[0].text)';
+        } else if (responseData.text) { // Simplest format
+             optimizedText = responseData.text.trim();
+             debug = 'Success (text)';
+        }
+        // Add more specific extraction logic if needed based on Grok's response format
+
+        if (!optimizedText) {
+            console.warn('API response successful, but no optimized text found in expected fields.');
+             throw new Error('未能从API响应中提取优化后的文本。');
         }
 
         const result = { optimizedText, debug };
-        
-        // 即使是模拟结果也缓存起来
-        responseCache.set(cacheKey, {
-            response: result,
-            timestamp: Date.now()
-        });
-        
+        responseCache.set(cacheKey, { response: result, timestamp: Date.now() });
         return result;
-    } catch (error) {
-        console.error('文本优化处理出错:', error);
-        return { error: error.message || '未知错误' };
+
+    } catch (parseError) {
+        console.error('Error parsing API response:', parseError);
+        const result = { error: true, message: '解析API响应失败。', debug: `JSON parse error: ${parseError.message}` };
+         // Decide if you want to cache parse errors
+         // responseCache.set(cacheKey, { response: result, timestamp: Date.now() });
+        return result;
     }
 }
 
-// 测试API连接
-async function testApiConnection(text, modelType, modelName) {
-    // 如果未指定模型类型，则使用当前设置的模型
-    if (!modelType) {
-        const { currentModel } = await chrome.storage.sync.get('currentModel');
-        modelType = currentModel || 'grok';
-    }
-    
-    console.log(`测试${modelType}模型API连接, 版本: ${modelName || '默认'}`);
-    
-    try {
-        // 获取配置
-        const settings = await loadSettings();
-        const apiKeys = settings.apiKeys || {};
-        const userSettings = settings.settings || {};
-        const modelVariant = modelName || settings.modelVariant || '';
-        
-        console.log('测试连接使用的配置:', {
-            modelType,
-            modelVariant,
-            hasApiKey: !!apiKeys[modelType],
-            apiKeyLength: apiKeys[modelType] ? apiKeys[modelType].length : 0,
-            settings: userSettings
-        });
-        
-        // 获取API配置和密钥
-        const apiConfig = getApiConfig(userSettings, modelType);
-        const apiKey = apiKeys && apiKeys[modelType];
-        
-        console.log('API配置:', apiConfig);
-        
-        // 验证API密钥
-        if (!apiConfig || !apiKey) {
-            return { 
-                success: false, 
-                error: !apiKey ? 'API密钥未配置' : 'API配置不正确' 
-            };
-        }
-        
-        // 构造请求头和URL
-        const headers = { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey.trim()}`
-        };
-        
-        // 构造测试消息
-        const testMessage = text || '这是一个API连接测试。如果您看到此消息，说明API连接成功!';
-        
-        // 根据模型类型构造不同的请求体
-        let bodyPayload;
-        if (modelType === 'gemini') {
-            bodyPayload = formatGeminiRequest(testMessage, 100, 0.7);
-        } else {
-            // Grok模型
-            bodyPayload = {
-                model: modelVariant || apiConfig.defaultModel,
-                messages: [{ role: "user", content: testMessage }],
-                max_tokens: 100,
-                temperature: 0.7
-            };
-        }
-        
-        // 输出请求信息以便调试
-        console.log('测试API请求详情:', {
-            url: apiConfig.url,
-            method: 'POST',
-            headers: Object.keys(headers),
-            modelType,
-            bodyPayload
-        });
-        
-        // 发送请求
-        console.log('发送测试请求到:', apiConfig.url);
-        const response = await fetch(apiConfig.url, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(bodyPayload)
-        });
-        
-        // 检查响应
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('API测试失败:', response.status, errorText);
-            try {
-                // 尝试解析错误响应为JSON
-                const errorJson = JSON.parse(errorText);
-                console.error('错误详情:', errorJson);
-                if (errorJson.error) {
-                    return {
-                        success: false,
-                        error: `HTTP error ${response.status}: ${errorJson.error.message || errorJson.error || errorText}`
-                    };
-                }
-            } catch (parseError) {
-                console.error('解析错误响应失败', parseError);
-            }
-            return { 
-                success: false, 
-                error: `HTTP error ${response.status}: ${errorText}` 
-            };
-        }
-        
-        // 解析响应
-        const data = await response.json();
-        console.log('API测试响应:', data);
-        
-        // 提取响应文本，根据模型类型处理
-        let responseText = '';
-        
-        if (modelType === 'gemini') {
-            responseText = extractGeminiResponse(data);
-        } else {
-            // Grok模型响应处理
-            // 检查标准格式
-            if (data.choices && data.choices[0]) {
-                if (data.choices[0].message && data.choices[0].message.content) {
-                    responseText = data.choices[0].message.content;
-                } else if (data.choices[0].text) {
-                    responseText = data.choices[0].text;
-                }
-            }
-            
-            // 检查简单文本格式
-            if (!responseText && data.text) {
-                responseText = data.text;
-            }
-        }
-        
-        // 如果仍然没有找到响应文本，但API调用成功
-        if (!responseText) {
-            // 尝试提取API返回的模型信息
-            const modelInfo = data.model || modelVariant || apiConfig.defaultModel;
-            return { 
-                success: true, 
-                message: `API连接成功! 模型: ${modelInfo}. 调用ID: ${data.id || '未知'}`
-            };
-        }
-        
-        return { 
-            success: true, 
-            message: responseText.substring(0, 100) + (responseText.length > 100 ? '...' : '')
-        };
-    } catch (error) {
-        console.error('API测试出错:', error);
-        return { 
-            success: false, 
-            error: error.message || '未知错误' 
-        };
-    }
+
+/**
+ * Tests the API connection for the specified model.
+ * Relies on background script's fetch logic.
+ * @param {string} modelType - The model type (e.g., 'grok').
+ * @param {string} modelName - Specific model variant (e.g., 'grok-3-beta').
+ * @param {string} testText - Optional text for the test prompt.
+ * @returns {Promise<object>} Promise resolving to { success: boolean, message?: string, error?: string }
+ */
+async function testApiConnection(modelType = MODEL_NAME_GROK, modelName, testText) {
+     console.log(`Testing API connection for ${modelType}, variant: ${modelName || 'default'}`);
+
+     let settingsData;
+     try {
+         settingsData = await loadSettings();
+     } catch (loadError) {
+         console.error("Error loading settings for API test:", loadError);
+         return { success: false, error: "加载扩展设置失败。" };
+     }
+
+     const apiKeys = settingsData[STORAGE_KEYS.API_KEYS] || {};
+     const userSettings = settingsData[STORAGE_KEYS.SETTINGS] || {};
+     const apiKey = apiKeys[modelType];
+     const effectiveModelName = modelName || settingsData[STORAGE_KEYS.MODEL_VARIANT] || API_CONFIGS[modelType]?.defaultModel;
+
+     const apiConfig = getApiConfig(userSettings, modelType);
+
+     if (!apiConfig || !apiKey) {
+         return { success: false, error: !apiKey ? 'API密钥未配置。' : 'API配置不正确。' };
+     }
+
+     const headers = {
+         ...apiConfig.headers,
+         'Authorization': `Bearer ${apiKey.trim()}`
+     };
+
+     const testMessage = testText || '这是一个API连接测试。';
+     const bodyPayload = {
+         model: effectiveModelName,
+         messages: [{ role: "user", content: testMessage }],
+         max_tokens: 50, // Keep test response short
+         temperature: 0.7
+     };
+
+     const controller = new AbortController();
+     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT); // Use same timeout
+
+     try {
+         console.log(`Sending test request to ${apiConfig.url} with model ${effectiveModelName}`);
+         const response = await fetch(apiConfig.url, {
+             method: 'POST',
+             headers,
+             body: JSON.stringify(bodyPayload),
+             signal: controller.signal,
+             cache: 'no-cache',
+         });
+         clearTimeout(timeoutId);
+
+         if (!response.ok) {
+             let errorDetails = await response.text();
+             console.error('API Test Failed:', response.status, errorDetails);
+              try {
+                  const errorJson = JSON.parse(errorDetails);
+                  if (errorJson.error?.message) {
+                      errorDetails = errorJson.error.message;
+                  }
+              } catch (e) { /* Ignore if not JSON */ }
+             return { success: false, error: `API测试失败 (HTTP ${response.status}): ${errorDetails}` };
+         }
+
+         const data = await response.json();
+         console.log('API Test Response:', data);
+
+         // Try to extract a meaningful response part
+          let responseText = '';
+          if (data.choices && data.choices[0]?.message?.content) {
+              responseText = data.choices[0].message.content.trim();
+          } else if (data.choices && data.choices[0]?.text) {
+              responseText = data.choices[0].text.trim();
+          } else if (data.text) {
+              responseText = data.text.trim();
+          } else if (data.id) {
+              // If no text, confirm connection with ID
+              responseText = `连接成功，收到响应 ID: ${data.id}`;
+          } else {
+              responseText = '连接成功，但未在响应中找到预期文本。';
+          }
+
+         return { success: true, message: responseText };
+
+     } catch (error) {
+         clearTimeout(timeoutId);
+         console.error('API Test Fetch Error:', error);
+          let message = '测试请求失败，请检查网络或URL。';
+          if (error.name === 'AbortError') {
+              message = 'API测试请求超时。';
+          }
+         return { success: false, error: `${message} (${error.message || '未知网络错误'})` };
+     }
 }
 
-// 监听来自 content script 的消息
+
+// --- Event Listeners ---
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    // 处理ping消息，用于检查扩展连接状态
+    console.log('Message received in background:', request);
+
     if (request.action === 'ping') {
-        sendResponse({ status: 'ok' });
-        return true;
+        sendResponse({ status: 'ok', timestamp: Date.now() });
+        return true; // Indicate async response possible (though not used here)
     }
-    
+
     if (request.action === 'optimizeText') {
         optimizeText(request.text)
-            .then(result => {
-                sendResponse(result);
-            })
+            .then(sendResponse)
             .catch(error => {
-                console.error('处理优化请求出错:', error);
-                sendResponse({ error: error.message || '未知错误' });
+                console.error('Error processing optimizeText request:', error);
+                // Ensure an error object is sent back
+                sendResponse({ error: true, message: error.message || '处理优化请求时发生未知错误。' });
             });
-        return true; // 表明我们将异步发送响应
+        return true; // Indicate async response
     }
-    
+
     if (request.action === 'testApiConnection') {
-        console.log('处理API连接测试请求');
-        testApiConnection(request.text, request.model, request.modelName)
-            .then(result => {
-                console.log('API测试结果:', result);
-                sendResponse(result);
-            })
+        testApiConnection(request.model, request.modelName, request.text)
+            .then(sendResponse)
             .catch(error => {
-                console.error('API测试出错:', error);
-                sendResponse({ 
-                    success: false, 
-                    error: error.message || '未知错误' 
-                });
+                console.error('Error processing testApiConnection request:', error);
+                sendResponse({ success: false, error: error.message || '处理API测试请求时发生未知错误。' });
             });
-        return true; // 表明我们将异步发送响应
+        return true; // Indicate async response
     }
-    
-    // 处理切换模型请求
-    if (request.action === 'switchModel') {
-        console.log('切换模型至:', request.model);
-        if (request.model) {
-            chrome.storage.sync.set({ currentModel: request.model, modelVariant: request.model === 'grok' ? 'grok-3-beta' : 'gemini-pro' })
-                .then(() => {
-                    console.log('模型切换成功');
-                    sendResponse({ success: true });
-                })
-                .catch(error => {
-                    console.error('模型切换失败:', error);
-                    sendResponse({ success: false, error: error.message });
-                });
-            // 清空缓存，因为模型已切换
-            responseCache.clear();
-            return true; // 表明我们将异步发送响应
-        }
-        sendResponse({ success: false, error: '未提供有效的模型名称' });
-        return true;
-    }
+
+     // Listen for settings updates to clear cache
+     if (request.action === 'settingsUpdated') {
+         console.log('Settings updated signal received, clearing response cache.');
+         responseCache.clear();
+         // Optional: Re-load settings in background immediately if needed
+         // loadSettings();
+         sendResponse({ success: true }); // Acknowledge
+         return true;
+     }
+
+    // Note: 'switchModel' action removed as we focus on Grok for now
+
+    // Default case for unhandled actions
+    console.warn('Unhandled action received:', request.action);
+    // sendResponse({ error: true, message: `Unknown action: ${request.action}` }); // Optional: Respond with error
+    return false; // No async response intended
 });
 
-// 监听安装事件
+// On Install/Update
 chrome.runtime.onInstalled.addListener((details) => {
-    console.log('扩展安装/更新:', details.reason);
-    
+    console.log('Extension installed/updated:', details.reason);
     if (details.reason === 'install') {
-        console.log('初始化默认设置');
-        // 初始化存储默认设置
+        console.log('Performing first-time setup: Initializing default settings.');
+        // Initialize default settings
         chrome.storage.sync.set({
-            currentModel: MODEL_NAME,
-            apiKeys: {},
-            settings: {
+            [STORAGE_KEYS.CURRENT_MODEL]: MODEL_NAME_GROK,
+            [STORAGE_KEYS.MODEL_VARIANT]: DEFAULT_MODEL_GROK,
+            [STORAGE_KEYS.API_KEYS]: {}, // Empty keys initially
+            [STORAGE_KEYS.SETTINGS]: { // Default functional settings
                 autoOptimize: false,
                 optimizeDelay: 1000,
-                maxLength: 1000,
+                maxLength: 1500, // Increased default max length
                 temperature: 0.7,
                 promptTemplate: DEFAULT_PROMPT_TEMPLATE,
                 showButton: true,
-                buttonPosition: 'right'
+                buttonPosition: 'right',
+                showDebugInfo: false, // Keep debug off by default
+                 apiConfig: { // Ensure default API config structure exists
+                     [MODEL_NAME_GROK]: {
+                         url: GROK_API_URL,
+                         // Model variant is stored separately in MODEL_VARIANT
+                     }
+                 }
             }
         }).then(() => {
-            console.log('默认设置初始化完成');
+            console.log('Default settings initialized successfully.');
         }).catch(error => {
-            console.error('默认设置初始化失败:', error);
+            console.error('Failed to initialize default settings:', error);
         });
+    } else if (details.reason === 'update') {
+         // Potentially run migration logic for settings if needed between versions
+         console.log('Extension updated to version:', chrome.runtime.getManifest().version);
+         // Example: Check if a new setting needs a default value
+         // loadSettings().then(settings => { /* Check and update */ });
     }
 });
+
+console.log('Background script loaded and running.');

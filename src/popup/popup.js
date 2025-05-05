@@ -1,221 +1,253 @@
-// DOM 元素
+// DOM Elements
 const statusMessage = document.getElementById('status-message');
 const optionsButton = document.getElementById('options-button');
 const testConnectionButton = document.getElementById('test-connection');
 const debugContent = document.getElementById('debug-content');
 const modelStatus = document.getElementById('model-status');
+const versionBadge = document.querySelector('.version-badge'); // Get version badge
 
-// 常量
-const MODEL_NAME = 'grok';
+// Constants (Should ideally match background/options)
+const MODEL_NAME_GROK = 'grok';
+const STORAGE_KEYS = {
+    API_KEYS: 'apiKeys',
+    SETTINGS: 'settings',
+    MODEL_VARIANT: 'modelVariant',
+};
 
-// 初始化
+// --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
-    console.log("弹窗已加载");
-    
-    // 加载设置和检查API状态
+    console.log("Popup loaded.");
     initializePopup();
-    
-    // 设置事件监听器
-    optionsButton.addEventListener('click', openOptions);
-    testConnectionButton.addEventListener('click', handleTestConnection);
+    setupEventListeners();
 });
 
-// 初始化弹出窗口
 async function initializePopup() {
-    try {
-        // 加载保存的设置
-        const settings = await chrome.storage.sync.get(['apiKeys', 'settings']);
-        const apiKey = settings.apiKeys && settings.apiKeys[MODEL_NAME];
-        
-        // 获取当前选择的模型名称
-        let currentModel = MODEL_NAME;
-        if (settings.settings && 
-            settings.settings.apiConfig && 
-            settings.settings.apiConfig.grok && 
-            settings.settings.apiConfig.grok.model) {
-            currentModel = settings.settings.apiConfig.grok.model;
+    showStatus("正在加载...", "info"); // Initial loading state
+
+    // Set version from manifest
+    if (versionBadge) {
+        try {
+             versionBadge.textContent = `v${chrome.runtime.getManifest().version}`;
+        } catch (e) {
+             console.warn("Could not get manifest version.");
+             versionBadge.textContent = 'v?.?.?';
         }
-        
-        // 设置模型状态指示器
-        updateModelStatus(!!apiKey);
-        
-        // 显示版本信息
+    }
+
+
+    try {
+        // Get necessary data from storage
+        const data = await chrome.storage.sync.get([
+            STORAGE_KEYS.API_KEYS,
+            STORAGE_KEYS.MODEL_VARIANT,
+            // Optionally get specific settings if needed by popup UI
+            // STORAGE_KEYS.SETTINGS
+        ]);
+
+        const apiKeys = data[STORAGE_KEYS.API_KEYS] || {};
+        const modelVariant = data[STORAGE_KEYS.MODEL_VARIANT] || '未设置'; // Get saved variant
+        const hasApiKey = !!apiKeys[MODEL_NAME_GROK];
+
+        // Update UI based on loaded data
+        updateModelStatus(hasApiKey); // Initial status based on key presence
+
         debugContent.innerHTML = `
-            <p>扩展版本: ${chrome.runtime.getManifest().version}</p>
-            <p>当前模型: ${currentModel}</p>
-            <p>配置状态: ${apiKey ? '已配置API密钥' : '未配置API密钥'}</p>
-            <p>点击"测试连接"来验证API连接状态</p>
+            <p>扩展版本: ${versionBadge?.textContent || '未知'}</p>
+            <p>当前选用模型: ${modelVariant}</p>
+            <p>API密钥状态: ${hasApiKey ? '<span style="color: green;">已配置</span>' : '<span style="color: orange;">未配置</span>'}</p>
+            <p>点击 "测试连接" 验证与API的连通性。</p>
         `;
+
+        hideStatus(); // Clear loading message
+
     } catch (error) {
-        console.error("初始化加载设置错误:", error);
-        showStatus("加载设置时出错", "error");
+        console.error("Popup initialization error:", error);
+        showStatus("加载状态失败", "error");
         debugContent.innerHTML = `
-            <p style="color: red;">加载设置时出错:</p>
+            <p style="color: red;">加载扩展状态时出错:</p>
             <p>${error.message || '未知错误'}</p>
+            <p>请尝试重新打开弹窗或检查浏览器控制台。</p>
         `;
+        updateModelStatus(false); // Show disconnected on error
     }
 }
 
-// 更新模型状态指示器
-function updateModelStatus(hasKey, isConnected = false) {
+function setupEventListeners() {
+    if (optionsButton) {
+        optionsButton.addEventListener('click', openOptionsPage);
+    } else {
+        console.error("Options button not found.");
+    }
+
+    if (testConnectionButton) {
+        testConnectionButton.addEventListener('click', handleTestConnection);
+    } else {
+        console.error("Test connection button not found.");
+    }
+
+    // Add listener for clicks within debug content (e.g., for settings link)
+    if (debugContent) {
+         debugContent.addEventListener('click', (event) => {
+             if (event.target.id === 'open-options-link') {
+                 event.preventDefault();
+                 openOptionsPage();
+             }
+         });
+    }
+}
+
+
+// --- UI Update Functions ---
+
+function updateModelStatus(hasKey, isConnected = null) {
     if (!modelStatus) return;
-    
+
     if (!hasKey) {
         modelStatus.textContent = '未配置';
         modelStatus.className = 'model-status disconnected';
-    } else if (isConnected) {
+        modelStatus.title = '请在高级设置中配置API密钥';
+    } else if (isConnected === true) {
         modelStatus.textContent = '已连接';
         modelStatus.className = 'model-status connected';
-    } else {
+        modelStatus.title = 'API连接测试成功';
+    } else if (isConnected === false) {
+         modelStatus.textContent = '连接失败';
+         modelStatus.className = 'model-status disconnected';
+         modelStatus.title = 'API连接测试失败，请检查设置和网络';
+    } else { // isConnected is null (initial state or test pending)
         modelStatus.textContent = '待验证';
-        modelStatus.className = 'model-status';
+        modelStatus.className = 'model-status'; // Default style
+        modelStatus.title = 'API密钥已配置，点击“测试连接”进行验证';
     }
 }
 
-// 打开选项页面
-function openOptions() {
-    console.log("打开高级设置页面");
-    chrome.runtime.openOptionsPage();
+function showStatus(message, type = 'info') {
+    if (!statusMessage) return;
+    statusMessage.textContent = message;
+    // Ensure base class is present, then add type class
+    statusMessage.className = `status-message ${type}`;
+    statusMessage.style.display = message ? 'block' : 'none'; // Show/hide based on message presence
+
+    // Auto-clear non-error messages
+    if (type !== 'error' && type !== 'warning') { // Keep warning visible too?
+        setTimeout(hideStatus, 3000);
+    }
 }
 
-// 处理测试API连接
+function hideStatus() {
+    if (statusMessage) {
+        statusMessage.textContent = '';
+        statusMessage.className = 'status-message'; // Reset class
+        statusMessage.style.display = 'none';
+    }
+}
+
+// --- Actions ---
+
+function openOptionsPage() {
+    console.log("Opening options page...");
+    if (chrome.runtime.openOptionsPage) {
+        chrome.runtime.openOptionsPage();
+    } else {
+        console.error("chrome.runtime.openOptionsPage is not available.");
+        showStatus("无法打开设置页面", "error");
+    }
+}
+
 async function handleTestConnection() {
-    console.log("测试API连接");
-    
-    // 禁用按钮，避免重复点击
+    if (!testConnectionButton) return;
+
     testConnectionButton.disabled = true;
-    showStatus("正在测试连接...", "info");
-    
+    testConnectionButton.textContent = '测试中...'; // Provide feedback on the button
+    showStatus("正在发送测试请求...", "info");
+    updateModelStatus(true, null); // Reset status to 'pending' visually if key exists
+     debugContent.innerHTML = `<p>正在测试连接，请稍候...</p>`; // Update debug area
+
     try {
-        // 获取当前选择的模型名称
-        const settings = await chrome.storage.sync.get(['apiKeys', 'settings']);
-        const apiKey = settings.apiKeys && settings.apiKeys[MODEL_NAME];
-        
-        let currentModel = MODEL_NAME;
-        if (settings.settings && 
-            settings.settings.apiConfig && 
-            settings.settings.apiConfig.grok && 
-            settings.settings.apiConfig.grok.model) {
-            currentModel = settings.settings.apiConfig.grok.model;
-        }
-        
-        debugContent.innerHTML = `<p>正在测试${currentModel}模型的API连接，请稍候...</p>`;
-        
-        // 检查是否已设置API Key
-        if (!apiKey) {
-            updateModelStatus(false);
-            showStatus("未配置API密钥", "error");
-            debugContent.innerHTML = `
-                <p style="color: red;">未设置Grok的API密钥</p>
-                <p>请在<a href="#" id="open-options">高级设置</a>中配置API密钥</p>
-            `;
-            addOptionsLinkListener();
-            return;
-        }
-        
-        // 执行API测试
-        const result = await testApiConnection(currentModel);
-        
-        // 根据测试结果更新状态
+        // Get the currently selected model variant from storage to test accurately
+        const data = await chrome.storage.sync.get([STORAGE_KEYS.MODEL_VARIANT, STORAGE_KEYS.API_KEYS]);
+        const modelVariant = data[STORAGE_KEYS.MODEL_VARIANT]; // Use the saved variant
+        const hasApiKey = !!(data[STORAGE_KEYS.API_KEYS]?.[MODEL_NAME_GROK]);
+
+         if (!hasApiKey) {
+              showStatus("未配置API密钥", "error");
+              updateModelStatus(false);
+              debugContent.innerHTML = `
+                  <p style="color: orange;">未找到Grok API密钥。</p>
+                  <p>请点击 <a href="#" id="open-options-link">高级设置</a> 进行配置。</p>
+              `;
+              // Note: Listener for open-options-link is added in setupEventListeners
+              return; // Exit early
+         }
+
+
+        // Send message to background script to perform the test
+        const result = await chrome.runtime.sendMessage({
+            action: 'testApiConnection',
+            model: MODEL_NAME_GROK, // Specify the model type being tested
+            modelName: modelVariant // Pass the specific variant
+            // text: Optional test text if needed
+        });
+
+        console.log("API Test Result received in popup:", result);
+
+        // Update UI based on the result from background script
         if (result && result.success) {
-            updateModelStatus(true, true);
             showStatus("API连接测试成功", "success");
+            updateModelStatus(true, true); // Mark as connected
+            debugContent.innerHTML = `
+                <p style="color: green;">✅ 连接测试成功!</p>
+                <p>模型响应: ${result.message ? escapeHtml(result.message.substring(0, 150)) + (result.message.length > 150 ? '...' : '') : '(无文本内容)'}</p>
+            `;
         } else {
-            updateModelStatus(true, false);
+            const errorMessage = result?.error || '未知错误，请检查后台脚本日志。';
             showStatus("API连接测试失败", "error");
+            updateModelStatus(true, false); // Mark as connection failed (key exists, but test failed)
+            debugContent.innerHTML = `
+                <p style="color: red;">❌ 连接测试失败:</p>
+                <p>${escapeHtml(errorMessage)}</p>
+                 <p>请检查:</p>
+                 <ul>
+                     <li>API密钥是否正确/有效</li>
+                     <li>网络连接和防火墙设置</li>
+                     <li>浏览器控制台中的详细错误</li>
+                     <li><a href="#" id="open-options-link">高级设置</a> 中的URL和模型名称</li>
+                 </ul>
+            `;
         }
-        
-        // 显示详细结果
-        displayTestResult(result);
+
     } catch (error) {
-        console.error('API测试错误:', error);
-        updateModelStatus(true, false);
-        showStatus("API测试发生错误", "error");
+        console.error("Error during test connection:", error);
+        showStatus("测试请求失败", "error");
+        updateModelStatus(true, false); // Assume connection failed if message send fails
+
+        let detail = error.message || '未知通信错误。';
+        if (error.message?.includes('Extension context invalidated')) {
+             detail = '扩展连接已断开，请刷新页面。';
+        } else if (error.message?.includes('Could not establish connection')) {
+             detail = '无法连接到后台脚本，可能已被禁用或出错。';
+        }
         debugContent.innerHTML = `
-            <p style="color: red;">API测试过程中发生错误:</p>
-            <p>${error.message || '未知错误'}</p>
-            <p>请按F12打开开发者工具，查看Console中的详细错误信息</p>
+            <p style="color: red;">发送测试请求时出错:</p>
+            <p>${escapeHtml(detail)}</p>
+             <p>请检查浏览器控制台获取更多信息。</p>
         `;
     } finally {
-        // 恢复按钮状态
-        testConnectionButton.disabled = false;
-    }
-}
-
-// 添加选项链接监听器
-function addOptionsLinkListener() {
-    setTimeout(() => {
-        const openOptionsLink = document.getElementById('open-options');
-        if (openOptionsLink) {
-            openOptionsLink.addEventListener('click', (e) => {
-                e.preventDefault();
-                openOptions();
-            });
-        }
-    }, 10);
-}
-
-// 显示测试结果
-function displayTestResult(result) {
-    if (result && result.success) {
-        debugContent.innerHTML = `
-            <p style="color: green;">API连接测试成功!</p>
-            <p>响应: ${result.message.substring(0, 100)}${result.message.length > 100 ? '...' : ''}</p>
-        `;
-    } else if (result && result.error) {
-        debugContent.innerHTML = `
-            <p style="color: red;">API测试失败:</p>
-            <p>${result.error}</p>
-            <p>可能的原因:</p>
-            <ul>
-                <li>API密钥不正确或无效</li>
-                <li>网络连接问题 (防火墙、代理)</li>
-                <li>API服务暂时不可用 (限流、维护)</li>
-                <li>主机权限未正确设置 (manifest.json)</li>
-                <li>API URL 或模型名称配置错误</li>
-            </ul>
-            <p>请在<a href="#" id="open-options">高级设置</a>中检查配置</p>
-        `;
-        addOptionsLinkListener();
-    } else {
-        debugContent.innerHTML = `
-            <p style="color: orange;">未收到有效响应或发生未知错误</p>
-            <p>请在<a href="#" id="open-options">高级设置</a>中检查配置</p>
-        `;
-        addOptionsLinkListener();
-    }
-}
-
-// 测试API连接
-async function testApiConnection(modelName = MODEL_NAME) {
-    try {
-        console.log(`发送${modelName}模型的API测试请求`);
-        
-        // 发送测试请求
-        return await chrome.runtime.sendMessage({
-            action: 'testApiConnection',
-            model: MODEL_NAME,
-            modelName: modelName,
-            text: '这是一个API连接测试，请确认API是否正常工作。'
-        });
-    } catch (error) {
-        console.error('发送API测试请求出错:', error);
-        throw error;
-    }
-}
-
-// 显示状态消息
-function showStatus(message, type = 'success') {
-    if (statusMessage) {
-        statusMessage.textContent = message;
-        statusMessage.className = `status-message ${type}`;
-        
-        // 3秒后清除不是错误的消息
-        if (type !== 'error') {
-            setTimeout(() => {
-                statusMessage.textContent = '';
-                statusMessage.className = 'status-message';
-            }, 3000);
+        // Re-enable the button
+        if (testConnectionButton) {
+             testConnectionButton.disabled = false;
+             testConnectionButton.textContent = '测试连接';
         }
     }
 }
+
+// Simple HTML escaping utility
+function escapeHtml(unsafe) {
+    if (!unsafe) return '';
+    return unsafe
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+ }
