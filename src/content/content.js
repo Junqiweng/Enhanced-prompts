@@ -1,18 +1,12 @@
 // 添加文本缓存
 class TextCache {
-    constructor(maxSize = 50) {
+    constructor(maxSize = 10) {
         this.cache = new Map();
         this.maxSize = maxSize;
     }
     
     get(key) {
-        const item = this.cache.get(key);
-        if (item) {
-            // 更新最近使用标记
-            item.lastUsed = Date.now();
-            return item.value;
-        }
-        return null;
+        return this.cache.get(key);
     }
     
     has(key) {
@@ -20,23 +14,12 @@ class TextCache {
     }
     
     set(key, value) {
-        // 如果缓存已满，删除最少使用的项
+        // 如果缓存已满，删除最早添加的项
         if (this.cache.size >= this.maxSize) {
-            let oldestKey = null;
-            let oldestTime = Infinity;
-            
-            for (const [k, item] of this.cache.entries()) {
-                if (item.lastUsed < oldestTime) {
-                    oldestTime = item.lastUsed;
-                    oldestKey = k;
-                }
-            }
-            
-            if (oldestKey) {
-                this.cache.delete(oldestKey);
-            }
+            const firstKey = this.cache.keys().next().value;
+            this.cache.delete(firstKey);
         }
-        this.cache.set(key, { value, lastUsed: Date.now() });
+        this.cache.set(key, value);
     }
 }
 
@@ -145,73 +128,135 @@ class InputDetector {
 
             if (originalText) {
                 try {
-                    // 立即更新按钮状态
                     optimizeButton.disabled = true;
                     optimizeButton.innerHTML = '优化中...';
+                    // 移除可能的其他状态类
                     optimizeButton.classList.remove('ai-text-optimizer-button-success', 'ai-text-optimizer-button-error');
 
-                    // 使用完整缓存键和简单缓存键
-                    const simpleKey = originalText.substring(0, 100);
-                    const fullKey = originalText.length > 100 ? 
-                        `${simpleKey}:${originalText.length}:${originalText.substring(originalText.length - 20)}` : 
-                        simpleKey;
-                    
-                    // 并行检查两种缓存
-                    if (this.textCache.has(fullKey)) {
-                        // 使用完整缓存结果
-                        const cachedResult = this.textCache.get(fullKey);
-                        this.applyOptimizedText(input, cachedResult, optimizeButton);
-                        return;
-                    }
-                    
-                    if (this.textCache.has(simpleKey)) {
-                        // 使用简单缓存结果
-                        const cachedResult = this.textCache.get(simpleKey);
-                        this.applyOptimizedText(input, cachedResult, optimizeButton);
-                        return;
-                    }
-
-                    // 创建超时处理
-                    const timeoutPromise = new Promise((_, reject) => {
-                        setTimeout(() => reject(new Error('请求超时')), 10000);
-                    });
-
-                    // 创建API请求
-                    const apiPromise = chrome.runtime.sendMessage({
-                        action: 'optimizeText',
-                        text: originalText
-                    });
-
-                    // 使用Promise.race竞争，谁先完成就用谁的结果
-                    try {
-                        const result = await Promise.race([apiPromise, timeoutPromise]);
+                    // 先检查本地缓存
+                    const cacheKey = originalText.substring(0, 100); // 使用前100个字符作为缓存键
+                    if (this.textCache.has(cacheKey)) {
+                        // 使用缓存的结果
+                        const cachedResult = this.textCache.get(cacheKey);
+                        this.setInputText(input, cachedResult);
+                        input.dataset.optimized = 'true';
                         
+                        // 更新UI状态
+                        optimizeButton.classList.add('ai-text-optimizer-button-success');
+                        optimizeButton.innerHTML = '优化成功';
+                        
+                        setTimeout(() => {
+                            optimizeButton.classList.remove('ai-text-optimizer-button-success');
+                            optimizeButton.innerHTML = '优化文本';
+                            optimizeButton.disabled = false;
+                        }, 1000);
+                        
+                        return;
+                    }
+
+                    // 发送消息给background script处理API请求
+                    try {
+                        const result = await chrome.runtime.sendMessage({
+                            action: 'optimizeText',
+                            text: originalText
+                        });
+
                         if (result && result.optimizedText) {
-                            // 保存到两种缓存中
-                            this.textCache.set(fullKey, result.optimizedText);
-                            this.textCache.set(simpleKey, result.optimizedText);
+                            // 添加到缓存
+                            this.textCache.set(cacheKey, result.optimizedText);
                             
-                            // 应用优化后的文本
-                            this.applyOptimizedText(input, result.optimizedText, optimizeButton);
+                            // 设置优化后的文本
+                            this.setInputText(input, result.optimizedText);
+                            input.dataset.optimized = 'true';
+                            
+                            // 添加成功状态样式
+                            optimizeButton.classList.add('ai-text-optimizer-button-success');
+                            optimizeButton.innerHTML = '优化成功';
+                            
+                            // 恢复原样式
+                            setTimeout(() => {
+                                optimizeButton.classList.remove('ai-text-optimizer-button-success');
+                                optimizeButton.innerHTML = '优化文本';
+                            }, 1000);
                         } else if (result && result.error) {
-                            this.handleOptimizationError(optimizeButton, `优化失败: ${result.error}`);
+                            console.error('优化失败:', result.error);
+                            
+                            // 添加错误状态样式
+                            optimizeButton.classList.add('ai-text-optimizer-button-error');
+                            optimizeButton.innerHTML = '优化失败';
+                            
+                            // 2秒后恢复原样式和提示错误
+                            setTimeout(() => {
+                                optimizeButton.classList.remove('ai-text-optimizer-button-error');
+                                optimizeButton.innerHTML = '优化文本';
+                                alert(`优化失败: ${result.error}`);
+                            }, 2000);
                         } else {
-                            this.handleOptimizationError(optimizeButton, '未收到有效的优化结果，请检查API设置');
+                            console.error('未收到有效的优化结果');
+                            
+                            // 添加错误状态样式
+                            optimizeButton.classList.add('ai-text-optimizer-button-error');
+                            optimizeButton.innerHTML = '未收到结果';
+                            
+                            // 2秒后恢复原样式和提示错误
+                            setTimeout(() => {
+                                optimizeButton.classList.remove('ai-text-optimizer-button-error');
+                                optimizeButton.innerHTML = '优化文本';
+                                alert('未收到有效的优化结果，请检查API设置');
+                            }, 2000);
                         }
-                    } catch (requestError) {
-                        // 处理请求错误
-                        this.handleOptimizationError(optimizeButton, 
-                            requestError.message === '请求超时' ? 
-                            '请求超时，请稍后再试' : 
-                            `通信错误: ${requestError.message || '未知错误'}`);
+                    } catch (chromeError) {
+                        console.error('Chrome runtime错误:', chromeError);
+                        
+                        // 添加错误状态样式
+                        optimizeButton.classList.add('ai-text-optimizer-button-error');
+                        optimizeButton.innerHTML = '连接错误';
+                        
+                        // 2秒后恢复原样式
+                        setTimeout(() => {
+                            optimizeButton.classList.remove('ai-text-optimizer-button-error');
+                            optimizeButton.innerHTML = '优化文本';
+                            
+                            // 判断是否是上下文失效错误
+                            if (chromeError.message && chromeError.message.includes('Extension context invalidated')) {
+                                alert('扩展上下文已失效，请刷新页面后重试');
+                            } else {
+                                alert(`通信错误: ${chromeError.message || '未知错误'}`);
+                            }
+                        }, 2000);
                     }
                 } catch (error) {
                     console.error('文本优化过程中出错:', error);
-                    this.handleOptimizationError(optimizeButton, `优化失败: ${error.message || '未知错误'}`);
+                    
+                    // 添加错误状态样式
+                    optimizeButton.classList.add('ai-text-optimizer-button-error');
+                    optimizeButton.innerHTML = '处理错误';
+                    
+                    // 2秒后恢复原样式
+                    setTimeout(() => {
+                        optimizeButton.classList.remove('ai-text-optimizer-button-error');
+                        optimizeButton.innerHTML = '优化文本';
+                        alert(`优化失败: ${error.message || '未知错误'}`);
+                    }, 2000);
+                } finally {
+                    // 仍然在finally解除禁用状态，但注意之前的setTimeout会覆盖内容
+                    setTimeout(() => {
+                        optimizeButton.disabled = false;
+                    }, 2000);
                 }
             } else {
                 console.log('没有文本需要优化');
-                this.handleOptimizationError(optimizeButton, '请先输入文本再进行优化');
+                
+                // 添加错误状态样式
+                optimizeButton.classList.add('ai-text-optimizer-button-error');
+                optimizeButton.innerHTML = '无文本';
+                
+                // 2秒后恢复原样式
+                setTimeout(() => {
+                    optimizeButton.classList.remove('ai-text-optimizer-button-error');
+                    optimizeButton.innerHTML = '优化文本';
+                    alert('请先输入文本再进行优化');
+                }, 2000);
             }
         });
 
@@ -301,65 +346,6 @@ class InputDetector {
                 // 备用方法失败
             }
         }
-    }
-
-    // 新增方法：应用优化后的文本并更新UI
-    applyOptimizedText(input, text, button) {
-        // 设置文本
-        this.setInputText(input, text);
-        input.dataset.optimized = 'true';
-        
-        // 更新UI状态
-        button.classList.add('ai-text-optimizer-button-success');
-        button.innerHTML = '优化成功';
-        
-        // 恢复按钮状态
-        setTimeout(() => {
-            button.classList.remove('ai-text-optimizer-button-success');
-            button.innerHTML = '优化文本';
-            button.disabled = false;
-        }, 1000);
-    }
-
-    // 新增方法：处理优化错误
-    handleOptimizationError(button, message) {
-        // 更新UI状态
-        button.classList.add('ai-text-optimizer-button-error');
-        button.innerHTML = '优化失败';
-        
-        // 恢复按钮状态
-        setTimeout(() => {
-            button.classList.remove('ai-text-optimizer-button-error');
-            button.innerHTML = '优化文本';
-            button.disabled = false;
-            
-            // 仅在必要时显示错误信息
-            if (message) {
-                console.error(message);
-                // 使用更友好的提示方式，避免阻塞alert
-                this.showToast(message);
-            }
-        }, 2000);
-    }
-
-    // 新增方法：显示Toast提示
-    showToast(message) {
-        // 检查是否已存在toast元素
-        let toast = document.querySelector('.ai-text-optimizer-tooltip');
-        if (!toast) {
-            toast = document.createElement('div');
-            toast.className = 'ai-text-optimizer-tooltip';
-            document.body.appendChild(toast);
-        }
-        
-        // 设置消息并显示
-        toast.textContent = message;
-        toast.classList.add('show');
-        
-        // 3秒后隐藏
-        setTimeout(() => {
-            toast.classList.remove('show');
-        }, 3000);
     }
 }
 
