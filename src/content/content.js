@@ -57,25 +57,60 @@ class TextCache {
 // Main class for detecting inputs and managing optimization buttons
 class InputDetector {
     constructor() {
-        this.observedInputs = new WeakSet(); // Use WeakSet to avoid memory leaks if elements are removed
+        this.observedInputs = new Set(); // Use Set so we can iterate when needed
+        this.inputButtonMap = new Map(); // Map input element to button and updater
         this.textCache = new TextCache();
         this.mutationObserver = null;
         this.debouncedUpdatePosition = null; // To store debounced function instance
+        this.settings = {
+            showButton: true,
+            buttonVisibility: 'focus',
+            toggleShortcut: 'Alt+O', // 默认为 Alt+O
+        };
+        this.lastFocusedInput = null;
         this.init();
         console.log('AI Text Optimizer: Input Detector initialized.');
     }
 
     init() {
-        this.initMutationObserver();
-        this.addExistingInputs();
-        // Listen for messages from background/popup (e.g., clear cache on settings change)
+        // 先加载设置
+        chrome.storage.sync.get(['settings'], (result) => {
+            const opts = result.settings || {};
+            this.settings.showButton = opts.showButton ?? true;
+            this.settings.buttonVisibility = opts.buttonVisibility ?? 'focus';
+            this.settings.toggleShortcut = opts.toggleShortcut || 'Alt+O';
+            console.log('Loaded settings:', this.settings);
+
+            this.initMutationObserver();
+            this.addExistingInputs();
+
+            // 注册全局快捷键监听
+            window.addEventListener('keydown', this.handleShortcut.bind(this));
+        });
+
+        // 监听设置更新消息
         chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             if (request.action === 'settingsUpdated') {
                 console.log('Settings updated signal received in content script, clearing client cache.');
                 this.textCache.clear();
+                chrome.storage.sync.get(['settings'], (result) => {
+                    const opts = result.settings || {};
+                    this.settings.showButton = opts.showButton ?? true;
+                    this.settings.buttonVisibility = opts.buttonVisibility ?? 'focus';
+                    this.settings.toggleShortcut = opts.toggleShortcut || 'Alt+O';
+                    console.log('Updated settings:', this.settings);
+
+                    // 清除旧按钮元素
+                    document.querySelectorAll('.ai-text-optimizer-button').forEach(btn => btn.remove());
+                    // 重置输入标记
+                    document.querySelectorAll('[data-ai-optimizer-attached]').forEach(el => delete el.dataset.aiOptimizerAttached);
+                    this.observedInputs.clear();
+                    this.inputButtonMap.clear();
+                    this.addExistingInputs();
+                });
                 sendResponse({ success: true });
             }
-            return true; // Keep channel open for async response if needed elsewhere
+            return true;
         });
     }
 
@@ -130,64 +165,133 @@ class InputDetector {
         console.log(`Found ${inputs.length} existing input fields.`);
     }
 
+    // 处理自定义快捷键 (仅在 hidden 模式下)
+    handleShortcut(event) {
+        if (this.settings.buttonVisibility !== 'hidden') return;
+        const combo = this.settings.toggleShortcut.split('+').map(s => s.trim().toLowerCase());
+        const key = event.key.toLowerCase();
+        const modifiers = {
+            alt: event.altKey,
+            ctrl: event.ctrlKey,
+            shift: event.shiftKey,
+            meta: event.metaKey,
+        };
+        // 判断快捷键匹配
+        let mainKey = null;
+        const expected = { alt: false, ctrl: false, shift: false, meta: false };
+        combo.forEach(part => {
+            if (['alt','ctrl','shift','meta'].includes(part)) expected[part] = true;
+            else mainKey = part;
+        });
+        if (mainKey !== key) return;
+        if (expected.alt !== modifiers.alt || expected.ctrl !== modifiers.ctrl || expected.shift !== modifiers.shift || expected.meta !== modifiers.meta) return;
+        // 匹配成功，触发按钮显示/隐藏
+        let input = document.activeElement;
+        let info = this.inputButtonMap.get(input);
+        // 如果当前焦点不是输入框或未绑定按钮，尝试使用上次聚焦的输入框
+        if (!info && this.lastFocusedInput) {
+            input = this.lastFocusedInput;
+            info = this.inputButtonMap.get(input);
+        }
+        if (info) {
+            const { button, updater } = info;
+            if (button.style.display === 'flex') {
+                button.style.display = 'none';
+            } else {
+                button.style.display = 'flex';
+                updater();
+            }
+            event.preventDefault();
+        }
+    }
+
     // Attach the optimizer button and event listeners to an input field
     attachInputHandler(input) {
-        if (this.observedInputs.has(input) || input.dataset.aiOptimizerAttached) {
-            return; // Already processed or marked
-        }
-
-        console.log('Attaching optimizer to:', input);
+        if (this.observedInputs.has(input) || input.dataset.aiOptimizerAttached) return;
         this.observedInputs.add(input);
-        input.dataset.aiOptimizerAttached = 'true'; // Mark as attached
+        input.dataset.aiOptimizerAttached = 'true';
+        // 记录最后聚焦的输入框
+        input.addEventListener('focus', () => { this.lastFocusedInput = input; });
 
+        if (!this.settings.showButton) return;
         const optimizeButton = this.createOptimizeButton();
-        input.dataset.originalText = this.getInputText(input); // Store initial text
-
-        // Append button to body to ensure consistent positioning context
         document.body.appendChild(optimizeButton);
 
-        // Debounced position updater
         const updatePosition = this.createPositionUpdater(input, optimizeButton);
-        const debouncedUpdatePosition = debounce(updatePosition, 150); // Debounce scroll/resize updates
-        this.debouncedUpdatePosition = debouncedUpdatePosition; // Store for potential cleanup
+        const debounced = debounce(updatePosition, 150);
+        this.inputButtonMap.set(input, { button: optimizeButton, updater: debounced });
 
-        // Event listeners for showing/hiding/positioning the button
-        const showButton = () => {
-            // Only show if the input is still in the DOM
-            if (document.body.contains(input)) {
-                optimizeButton.style.display = 'flex'; // Use 'flex' from CSS
-                updatePosition(); // Position immediately on focus/input
-            } else {
-                 // Input removed from DOM, cleanup button and listeners
-                 this.cleanupInputHandler(input, optimizeButton, debouncedUpdatePosition);
-            }
-        };
-        const hideButton = () => {
-            // Delay hiding to allow clicking the button
-            setTimeout(() => {
-                if (!optimizeButton.matches(':hover')) {
-                    optimizeButton.style.display = 'none';
+        // 根据可见性设置处理按钮的初始显示状态和事件监听
+        if (this.settings.buttonVisibility === 'hidden') {
+            // 完全隐藏模式 - 按钮始终保持隐藏
+            optimizeButton.style.display = 'none';
+            
+            // 仍然需要位置更新事件以防通过其他方式激活按钮
+            window.addEventListener('scroll', debounced, { passive: true });
+            window.addEventListener('resize', debounced);
+            
+        } else if (this.settings.buttonVisibility === 'always') {
+            // 始终可见模式 - 按钮一直显示，样式更低调
+            optimizeButton.style.display = 'flex';
+            optimizeButton.classList.add('ai-text-optimizer-button-subtle');
+            
+            // 无需隐藏按钮，仅添加位置更新监听器
+            window.addEventListener('scroll', debounced, { passive: true });
+            window.addEventListener('resize', debounced);
+            
+            // 立即更新按钮位置
+            updatePosition();
+            
+        } else if (this.settings.buttonVisibility === 'focus') {
+            // 聚焦/悬停模式 - 仅在输入框聚焦或悬停时显示按钮
+            optimizeButton.style.display = 'none'; // 初始隐藏
+            
+            // 定义显示按钮的函数
+            const showButton = () => {
+                if (document.body.contains(input)) {
+                    optimizeButton.style.display = 'flex';
+                    updatePosition();
+                } else {
+                    this.cleanupInputHandler(input, optimizeButton, debounced);
                 }
-            }, 250);
-        };
-
-        input.addEventListener('focus', showButton);
-        input.addEventListener('input', showButton); // Show button immediately on input
-        input.addEventListener('blur', hideButton);
-        optimizeButton.addEventListener('mouseenter', () => clearTimeout(hideButton)); // Keep visible if mouse enters button
-        optimizeButton.addEventListener('mouseleave', hideButton); // Hide if mouse leaves button
-        window.addEventListener('scroll', debouncedUpdatePosition, { passive: true }); // Use passive listener for scroll
-        window.addEventListener('resize', debouncedUpdatePosition);
+            };
+            
+            // 定义隐藏按钮的函数
+            const hideButton = () => {
+                setTimeout(() => {
+                    if (!optimizeButton.matches(':hover')) {
+                        optimizeButton.style.display = 'none';
+                    }
+                }, 250);
+            };
+            
+            // 添加输入框事件监听器
+            input.addEventListener('focus', showButton);
+            input.addEventListener('input', showButton);
+            input.addEventListener('blur', hideButton);
+            
+            // 添加按钮事件监听器
+            optimizeButton.addEventListener('mouseenter', () => clearTimeout(hideButton));
+            optimizeButton.addEventListener('mouseleave', hideButton);
+            
+            // 添加滚动和调整大小的事件监听器
+            window.addEventListener('scroll', debounced, { passive: true });
+            window.addEventListener('resize', debounced);
+        }
 
         // Reset state on manual input
         const resetOptimizeState = () => {
             input.dataset.originalText = this.getInputText(input); // Update original text on change
             optimizeButton.disabled = false;
             optimizeButton.innerHTML = '优化文本'; // Reset text
+            
+            // 重置按钮样式，并根据设置添加低调样式
             optimizeButton.className = 'ai-text-optimizer-button'; // Reset class
+            if (this.settings.buttonVisibility === 'always') {
+                optimizeButton.classList.add('ai-text-optimizer-button-subtle');
+            }
         };
         input.addEventListener('input', debounce(resetOptimizeState, 300)); // Debounce reset slightly
-
 
         // Button click handler
         optimizeButton.addEventListener('click', async (event) => {
@@ -271,7 +375,15 @@ class InputDetector {
         const button = document.createElement('button');
         button.className = 'ai-text-optimizer-button';
         button.innerHTML = '优化文本'; // Set initial text
-        button.style.display = 'none'; // Initially hidden
+        
+        // 初始状态下根据可见性设置按钮样式
+        if (this.settings.buttonVisibility === 'always') {
+            button.classList.add('ai-text-optimizer-button-subtle');
+            button.style.display = 'flex';
+        } else {
+            button.style.display = 'none'; // hidden或focus模式初始隐藏
+        }
+        
         button.type = 'button'; // Prevent form submission
         return button;
     }
@@ -328,6 +440,11 @@ class InputDetector {
                  button.innerHTML = originalText;
                  button.classList.remove('ai-text-optimizer-button-success', 'ai-text-optimizer-button-error');
                  button.disabled = false; // Re-enable after status display
+                 
+                 // 恢复始终可见模式的低调样式
+                 if (this.settings.buttonVisibility === 'always') {
+                     button.classList.add('ai-text-optimizer-button-subtle');
+                 }
              }
          }, 2500); // 2.5 seconds visibility for status
      }

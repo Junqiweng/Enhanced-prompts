@@ -11,6 +11,8 @@ const Elements = {
     showButton: document.getElementById('showButton'),
     buttonPosition: document.getElementById('buttonPosition'),
     showDebugInfo: document.getElementById('showDebugInfo'),
+    buttonVisibility: document.getElementById('buttonVisibility'),
+    toggleShortcut: document.getElementById('toggleShortcut'),
     // Grok API Settings
     grokUrl: document.getElementById('grok-url'),
     grokKey: document.getElementById('grok-key'),
@@ -53,6 +55,8 @@ const DEFAULT_SETTINGS = {
     showButton: true,
     buttonPosition: 'right',
     showDebugInfo: false,
+    buttonVisibility: 'focus',
+    toggleShortcut: 'Alt+O',
     apiConfig: {
         [MODEL_NAME_GROK]: {
             url: DEFAULT_GROK_URL,
@@ -169,6 +173,8 @@ function updateUI(settings, apiKeys = {}, modelVariant = null) {
         Elements.showButton.checked = settings.showButton ?? true;
         Elements.buttonPosition.value = settings.buttonPosition || 'right';
         Elements.showDebugInfo.checked = settings.showDebugInfo ?? false;
+        Elements.buttonVisibility.value = settings.buttonVisibility ?? 'focus';
+        Elements.toggleShortcut.value = settings.toggleShortcut || DEFAULT_SETTINGS.toggleShortcut;
 
         // API Config - Grok specific
         const grokConfig = settings.apiConfig?.[MODEL_NAME_GROK] || {};
@@ -292,6 +298,8 @@ async function saveSettings() {
             temperature: parseFloat(Elements.temperature.value),
             promptTemplate: Elements.promptTemplate.value.trim(),
             showButton: Elements.showButton.checked,
+            buttonVisibility: Elements.buttonVisibility.value,
+            toggleShortcut: Elements.toggleShortcut.value.trim(),
             buttonPosition: Elements.buttonPosition.value,
             showDebugInfo: Elements.showDebugInfo.checked,
             apiConfig: {
@@ -557,12 +565,14 @@ async function checkApiConfig() {
          output += `- 温度: ${mergedSettings.temperature}\n`;
          output += `- 显示按钮: ${mergedSettings.showButton ? '是' : '否'}\n`;
          output += `- 按钮位置: ${mergedSettings.buttonPosition}\n`;
+         output += `- 按钮可见性: ${getButtonVisibilityDisplayName(mergedSettings.buttonVisibility)}\n`;
+         output += `- 热键触发: ${mergedSettings.toggleShortcut}\n`;
          output += `\n建议:\n`;
          if (!grokKey) output += `- 请设置Grok API Key。\n`;
          if (!isValidUrl(grokConfig.url)) output += `- 请检查Grok API URL格式。\n`;
          if (!currentModelVariant) output += `- 请选择一个模型版本。\n`;
          if (grokKey && isValidUrl(grokConfig.url) && currentModelVariant) {
-              output += `- 基本配置完整，建议点击“测试连接”验证。 ✅\n`;
+              output += `- 基本配置完整，建议点击"测试连接"验证。 ✅\n`;
          }
 
          showDebugOutput(output);
@@ -654,4 +664,24 @@ function showDebugOutput(message) {
         Elements.debugOutputDiv.scrollTop = Elements.debugOutputDiv.scrollHeight;
     }
      console.log(`Debug Output: ${message}`); // Also log to console
+}
+
+// 添加辅助函数来获取按钮可见性的显示名称
+function getButtonVisibilityDisplayName(value) {
+    const names = {
+        'always': '始终可见',
+        'focus': '仅在输入框聚焦/悬停时显示',
+        'hidden': '完全隐藏'
+    };
+    return names[value] || value;
+}
+
+// Optionally in generateSettingsText (if previews settings export)
+function generateSettingsText(mergedSettings) {
+    let output = '# AI文本优化器设置\n\n';
+    // ... existing code ...
+    output += `- 按钮可见性: ${getButtonVisibilityDisplayName(mergedSettings.buttonVisibility)}\n`;
+    output += `- 热键触发: ${mergedSettings.toggleShortcut}\n`;
+    // ... existing code ...
+    return output;
 }

@@ -464,6 +464,7 @@ chrome.runtime.onInstalled.addListener((details) => {
                 promptTemplate: DEFAULT_PROMPT_TEMPLATE,
                 showButton: true,
                 buttonPosition: 'right',
+                buttonVisibility: 'focus', // 默认为仅在输入框聚焦/悬停时显示
                 showDebugInfo: false, // Keep debug off by default
                  apiConfig: { // Ensure default API config structure exists
                      [MODEL_NAME_GROK]: {
