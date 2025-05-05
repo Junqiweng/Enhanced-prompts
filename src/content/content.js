@@ -1,6 +1,6 @@
 // 添加文本缓存
 class TextCache {
-    constructor(maxSize = 10) {
+    constructor(maxSize = 20) {
         this.cache = new Map();
         this.maxSize = maxSize;
     }
@@ -27,7 +27,7 @@ class TextCache {
 class InputDetector {
     constructor() {
         this.observedInputs = new Set();
-        this.textCache = new TextCache(20); // 缓存最近20个请求结果
+        this.textCache = new TextCache(30); // 缓存最近30个请求结果
         this.initMutationObserver();
         this.addExistingInputs();
         console.log('AI文本优化器已初始化');
@@ -118,12 +118,6 @@ class InputDetector {
             event.preventDefault();
             event.stopPropagation();
 
-            // 若已优化且内容未变更，则禁止再次优化
-            if (input.dataset.optimized === 'true') {
-                alert('请先修改文本再进行新的优化');
-                return;
-            }
-
             const originalText = input.dataset.original || this.getInputText(input);
 
             if (originalText) {
@@ -134,7 +128,7 @@ class InputDetector {
                     optimizeButton.classList.remove('ai-text-optimizer-button-success', 'ai-text-optimizer-button-error');
 
                     // 先检查本地缓存
-                    const cacheKey = originalText.substring(0, 100); // 使用前100个字符作为缓存键
+                    const cacheKey = originalText; // 使用完整文本作为缓存键
                     if (this.textCache.has(cacheKey)) {
                         // 使用缓存的结果
                         const cachedResult = this.textCache.get(cacheKey);

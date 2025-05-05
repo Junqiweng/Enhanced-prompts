@@ -143,9 +143,8 @@ setInterval(cleanExpiredCache, 10 * 60 * 1000);
 
 // 计算缓存键
 function getCacheKey(text, modelVariant, temperature) {
-    // 使用文本的前100个字符作为缓存键的一部分，节省内存
-    const truncatedText = text.substring(0, 100);
-    return `${truncatedText}|${modelVariant}|${temperature}`;
+    // 使用完整文本作为缓存键的一部分
+    return `${text}|${modelVariant}|${temperature}`;
 }
 
 // 处理文本优化请求
