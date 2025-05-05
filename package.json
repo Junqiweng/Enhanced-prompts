@@ -1,0 +1,17 @@
+{
+  "name": "ai-text-optimizer",
+  "version": "1.0.0",
+  "description": "Chrome extension for optimizing text input using AI models",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo \"No build step required\""
+  },
+  "keywords": [
+    "chrome-extension",
+    "ai",
+    "text-optimization"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {}
+}

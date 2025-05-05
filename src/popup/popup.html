@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 文本优化器</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="popup-container">
+        <div class="header">
+            <h1>AI 文本优化器</h1>
+            <div class="version-badge" title="扩展版本">v1.1.0</div>
+        </div>
+        
+        <div class="card model-card">
+            <div class="card-header">
+                <div class="model-info">
+                    <span class="model-icon">X</span>
+                    <span class="model-name">Grok</span>
+                </div>
+                <span class="model-status" id="model-status"></span>
+            </div>
+            <div class="card-content">
+                <p class="description">使用 X.AI Grok 模型优化您的文本内容，使其更加专业和有说服力。</p>
+                <div class="action-buttons">
+                    <button id="test-connection" class="primary-button">测试连接</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="status-message" class="status-message"></div>
+        
+        <div class="card settings-card">
+            <div class="card-header">
+                <h2>设置选项</h2>
+            </div>
+            <div class="settings-items">
+                <a href="#" id="options-button" class="settings-item">
+                    <div class="settings-icon">⚙️</div>
+                    <div class="settings-text">
+                        <span class="settings-title">高级设置</span>
+                        <span class="settings-description">配置API密钥、模型参数和优化选项</span>
+                    </div>
+                    <div class="settings-arrow">›</div>
+                </a>
+            </div>
+        </div>
+        
+        <div class="debug-panel">
+            <details>
+                <summary><span class="info-icon">ℹ️</span> 详细信息</summary>
+                <div id="debug-content" class="debug-content">点击"测试连接"按钮来验证API连接状态</div>
+            </details>
+        </div>
+    </div>
+    
+    <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+.ai-text-optimizer-button {
+    position: fixed;
+    z-index: 10000;
+    padding: 8px 14px;
+    border: none;
+    border-radius: 20px;
+    background-color: #1a73e8;
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    display: flex;
+    align-items: center;
+    min-width: 100px;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+.ai-text-optimizer-button::before {
+    content: "✨";
+    margin-right: 6px;
+    font-size: 16px;
+}
+
+.ai-text-optimizer-button:hover {
+    background-color: #1557b0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transform: translateY(-2px);
+}
+
+.ai-text-optimizer-button:disabled {
+    background-color: #a0a0a0;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+.ai-text-optimizer-button:disabled::before {
+    content: "⏳";
+    animation: spin 1.5s linear infinite;
+}
+
+.ai-text-optimizer-button:active {
+    transform: translateY(1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 为不同状态添加动画效果 */
+.ai-text-optimizer-button-success {
+    background-color: #0f9d58 !important;
+}
+
+.ai-text-optimizer-button-success::before {
+    content: "✓";
+}
+
+.ai-text-optimizer-button-error {
+    background-color: #d93025 !important;
+}
+
+.ai-text-optimizer-button-error::before {
+    content: "✗";
+}
+
+/* 新增：优化类似Toast提示样式 */
+.ai-text-optimizer-tooltip {
+    position: fixed;
+    z-index: 10001;
+    padding: 8px 16px;
+    border-radius: 8px;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    font-size: 14px;
+    max-width: 300px;
+    text-align: center;
+    pointer-events: none;
+    transform: translateY(-10px);
+    transition: all 0.3s ease;
+    opacity: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+.ai-text-optimizer-tooltip.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* 按钮悬浮容器 */
+.ai-text-optimizer-container {
+    position: relative;
+    display: inline-block;
+}
+
+/* 响应式设计 */
+@media (max-width: 600px) {
+    .ai-text-optimizer-button {
+        font-size: 12px;
+        padding: 6px 10px;
+        min-width: 80px;
+    }
+
+    .ai-text-optimizer-button::before {
+        font-size: 14px;
+    }
+}
