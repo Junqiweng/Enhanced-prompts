@@ -5,13 +5,13 @@ const MODEL_NAME_GEMINI = 'gemini';
 const MODEL_NAME_CUSTOM = 'custom';
 
 const DEFAULT_MODEL_GROK = 'grok-3-beta';
-const DEFAULT_MODEL_CLAUDE = 'claude-3-5-sonnet-20240620';
-const DEFAULT_MODEL_GEMINI = 'gemini-1.5-pro';
+const DEFAULT_MODEL_CLAUDE = 'claude-3-7-sonnet-20250219';
+const DEFAULT_MODEL_GEMINI = 'gemini-2.5-flash-preview-04-17';
 const DEFAULT_MODEL_CUSTOM = 'custom-model';
 
 const GROK_API_URL = 'https://api.x.ai/v1/chat/completions';
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent';
 const CUSTOM_API_URL = '';
 
 const STORAGE_KEYS = {
@@ -35,8 +35,11 @@ const API_CONFIGS = {
         displayName: 'Grok',
         defaultModel: DEFAULT_MODEL_GROK,
         supportedModels: [
+            'grok-4',
+            'grok-3.5-turbo',
             'grok-3.5',
             'grok-3-beta',
+            'grok-3-mini-plus',
             'grok-3-mini-beta',
             'grok-3-mini-fast-beta',
             'grok-2',
@@ -52,8 +55,15 @@ const API_CONFIGS = {
         displayName: 'Claude',
         defaultModel: DEFAULT_MODEL_CLAUDE,
         supportedModels: [
+            'claude-3-7-sonnet-20250219',
+            'claude-3-7-sonnet-latest',
+            'claude-3-5-sonnet-20241022',
+            'claude-3-5-sonnet-latest',
             'claude-3-5-sonnet-20240620',
+            'claude-3-5-haiku-20241022',
+            'claude-3-5-haiku-latest',
             'claude-3-opus-20240229',
+            'claude-3-opus-latest',
             'claude-3-sonnet-20240229',
             'claude-3-haiku-20240307',
             'claude-2.1',
@@ -69,9 +79,23 @@ const API_CONFIGS = {
         displayName: 'Gemini',
         defaultModel: DEFAULT_MODEL_GEMINI,
         supportedModels: [
-            'gemini-1.5-pro',
+            'gemini-2.5-flash-preview-04-17',
+            'gemini-2.5-pro-preview-03-25',
+            'gemini-2.0-flash',
+            'gemini-2.0-flash-live-001',
+            'gemini-2.0-flash-lite',
+            'gemini-2.0-flash-lite-001',
+            'gemini-1.5-flash-latest',
             'gemini-1.5-flash',
-            'gemini-1.0-pro'
+            'gemini-1.5-flash-002',
+            'gemini-1.5-flash-001',
+            'gemini-1.5-flash-8b-latest',
+            'gemini-1.5-flash-8b',
+            'gemini-1.5-flash-8b-001',
+            'gemini-1.5-pro-latest',
+            'gemini-1.5-pro',
+            'gemini-1.5-pro-002',
+            'gemini-1.5-pro-001'
         ]
     },
     [MODEL_NAME_CUSTOM]: {

@@ -67,7 +67,7 @@ const MODEL_NAME_CUSTOM = 'custom';
 
 const DEFAULT_GROK_URL = 'https://api.x.ai/v1/chat/completions';
 const DEFAULT_CLAUDE_URL = 'https://api.anthropic.com/v1/messages';
-const DEFAULT_GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
+const DEFAULT_GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 const DEFAULT_GROK_MODEL = 'grok-3-beta';
 const DEFAULT_CLAUDE_MODEL = 'claude-3-5-sonnet-20240620';
@@ -131,10 +131,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Ensure apiConfig structure exists
         mergedSettings.apiConfig = mergedSettings.apiConfig || {};
         mergedSettings.apiConfig[MODEL_NAME_GROK] = mergedSettings.apiConfig[MODEL_NAME_GROK] || DEFAULT_SETTINGS.apiConfig[MODEL_NAME_GROK];
+        mergedSettings.apiConfig[MODEL_NAME_GEMINI] = mergedSettings.apiConfig[MODEL_NAME_GEMINI] || DEFAULT_SETTINGS.apiConfig[MODEL_NAME_GEMINI];
+        mergedSettings.apiConfig[MODEL_NAME_CLAUDE] = mergedSettings.apiConfig[MODEL_NAME_CLAUDE] || DEFAULT_SETTINGS.apiConfig[MODEL_NAME_CLAUDE];
 
-
-        // Fetch models first, then update UI which depends on the model list
-        await fetchXAIModels(false, mergedSettings.apiConfig[MODEL_NAME_GROK].model || modelVariant); // Pass current model for selection
+        // 获取当前选择的模型类型
+        const currentModel = mergedSettings[STORAGE_KEYS.CURRENT_MODEL] || MODEL_NAME_GROK;
+        
+        // 获取各模型列表
+        const currentGrokModel = currentModel === MODEL_NAME_GROK ? modelVariant : (mergedSettings.apiConfig[MODEL_NAME_GROK].model || DEFAULT_GROK_MODEL);
+        const currentGeminiModel = currentModel === MODEL_NAME_GEMINI ? modelVariant : (mergedSettings.apiConfig[MODEL_NAME_GEMINI].model || DEFAULT_GEMINI_MODEL);
+        const currentClaudeModel = currentModel === MODEL_NAME_CLAUDE ? modelVariant : (mergedSettings.apiConfig[MODEL_NAME_CLAUDE].model || DEFAULT_CLAUDE_MODEL);
+        
+        // 按顺序获取所有模型列表
+        await fetchXAIModels(false, currentGrokModel);
+        await fetchGeminiModels(false, currentGeminiModel);
+        await fetchClaudeModels(false, currentClaudeModel);
+        
+        // 更新UI
         updateUI(mergedSettings, apiKeys, modelVariant);
         setupEventListeners();
 
@@ -143,7 +156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         showStatus(`页面初始化失败: ${error.message}`, 'error');
         // Optionally update UI with default values on error
         updateUI(DEFAULT_SETTINGS, {});
-         setupEventListeners(); // Still setup listeners maybe?
+        setupEventListeners(); // Still setup listeners maybe?
     }
 });
 
@@ -186,22 +199,56 @@ function initTabs() {
 }
 
 function createRefreshButton() {
-    Elements.refreshModelsButton = document.createElement('button');
-    Elements.refreshModelsButton.id = 'refresh-models';
-    Elements.refreshModelsButton.className = 'button secondary-button test-button'; // Reuse existing style
-    Elements.refreshModelsButton.textContent = '刷新列表';
-    Elements.refreshModelsButton.style.marginLeft = '8px'; // Add some spacing
-    // Insert after the model select dropdown
-     if (Elements.grokModel && Elements.grokModel.parentNode) {
-          // Insert after the paragraph containing the help text for model select
-          const helpTextParagraph = Elements.grokModel.closest('.option-group')?.querySelector('.help-text');
-          if (helpTextParagraph) {
-              helpTextParagraph.parentNode.insertBefore(Elements.refreshModelsButton, helpTextParagraph.nextSibling);
-          } else {
-               // Fallback: append after the select element itself
-               Elements.grokModel.parentNode.insertBefore(Elements.refreshModelsButton, Elements.grokModel.nextSibling);
-          }
-     }
+    // Grok模型刷新按钮
+    Elements.refreshGrokModelsButton = document.createElement('button');
+    Elements.refreshGrokModelsButton.id = 'refresh-grok-models';
+    Elements.refreshGrokModelsButton.className = 'button secondary-button test-button';
+    Elements.refreshGrokModelsButton.textContent = '刷新列表';
+    Elements.refreshGrokModelsButton.style.marginLeft = '8px';
+    
+    // Gemini模型刷新按钮
+    Elements.refreshGeminiModelsButton = document.createElement('button');
+    Elements.refreshGeminiModelsButton.id = 'refresh-gemini-models';
+    Elements.refreshGeminiModelsButton.className = 'button secondary-button test-button';
+    Elements.refreshGeminiModelsButton.textContent = '刷新列表';
+    Elements.refreshGeminiModelsButton.style.marginLeft = '8px';
+    
+    // Claude模型刷新按钮
+    Elements.refreshClaudeModelsButton = document.createElement('button');
+    Elements.refreshClaudeModelsButton.id = 'refresh-claude-models';
+    Elements.refreshClaudeModelsButton.className = 'button secondary-button test-button';
+    Elements.refreshClaudeModelsButton.textContent = '刷新列表';
+    Elements.refreshClaudeModelsButton.style.marginLeft = '8px';
+    
+    // 插入Grok刷新按钮
+    if (Elements.grokModel && Elements.grokModel.parentNode) {
+        const helpTextParagraph = Elements.grokModel.closest('.option-group')?.querySelector('.help-text');
+        if (helpTextParagraph) {
+            helpTextParagraph.parentNode.insertBefore(Elements.refreshGrokModelsButton, helpTextParagraph.nextSibling);
+        } else {
+            Elements.grokModel.parentNode.insertBefore(Elements.refreshGrokModelsButton, Elements.grokModel.nextSibling);
+        }
+    }
+    
+    // 插入Gemini刷新按钮
+    if (Elements.geminiModel && Elements.geminiModel.parentNode) {
+        const helpTextParagraph = Elements.geminiModel.closest('.option-group')?.querySelector('.help-text');
+        if (helpTextParagraph) {
+            helpTextParagraph.parentNode.insertBefore(Elements.refreshGeminiModelsButton, helpTextParagraph.nextSibling);
+        } else {
+            Elements.geminiModel.parentNode.insertBefore(Elements.refreshGeminiModelsButton, Elements.geminiModel.nextSibling);
+        }
+    }
+    
+    // 插入Claude刷新按钮
+    if (Elements.claudeModel && Elements.claudeModel.parentNode) {
+        const helpTextParagraph = Elements.claudeModel.closest('.option-group')?.querySelector('.help-text');
+        if (helpTextParagraph) {
+            helpTextParagraph.parentNode.insertBefore(Elements.refreshClaudeModelsButton, helpTextParagraph.nextSibling);
+        } else {
+            Elements.claudeModel.parentNode.insertBefore(Elements.refreshClaudeModelsButton, Elements.claudeModel.nextSibling);
+        }
+    }
 }
 
 // Update UI elements based on loaded settings
@@ -260,7 +307,13 @@ function updateUI(settings, apiKeys = {}, modelVariant = null) {
         // Gemini API settings
         const geminiConfig = settings.apiConfig?.[MODEL_NAME_GEMINI] || {};
         Elements.geminiUrl.value = geminiConfig.url || DEFAULT_GEMINI_URL;
+        if (Elements.geminiUrl.value === DEFAULT_GEMINI_URL && DEFAULT_GEMINI_URL === 'https://generativelanguage.googleapis.com/v1beta/models') {
+            // 如果是默认URL，则确保初始状态是一个有效的完整URL
+            const selectedGeminiModel = geminiConfig.model || modelVariant || DEFAULT_GEMINI_MODEL; 
+            Elements.geminiUrl.value = `${DEFAULT_GEMINI_URL}/${selectedGeminiModel}:generateContent`;
+        }
         Elements.geminiKey.value = apiKeys[MODEL_NAME_GEMINI] || '';
+        setModelDropdownValue(Elements.geminiModel, modelVariant || geminiConfig.model || DEFAULT_GEMINI_MODEL);
         
         // Custom API settings
         const customConfig = settings.apiConfig?.[MODEL_NAME_CUSTOM] || {};
@@ -369,9 +422,24 @@ function setupEventListeners() {
     }
 
     // Model dropdown refresh button handlers
-    if (Elements.refreshModelsButton) {
-        Elements.refreshModelsButton.addEventListener('click', handleRefreshModels);
+    if (Elements.refreshGrokModelsButton) {
+        Elements.refreshGrokModelsButton.addEventListener('click', handleRefreshModels);
     }
+    if (Elements.refreshGeminiModelsButton) {
+        Elements.refreshGeminiModelsButton.addEventListener('click', handleRefreshModels);
+    }
+    if (Elements.refreshClaudeModelsButton) {
+        Elements.refreshClaudeModelsButton.addEventListener('click', handleRefreshModels);
+    }
+
+    // 在setupEventListeners函数内添加Gemini模型事件监听
+    Elements.geminiModel.addEventListener('change', function() {
+        // 当模型变更时，自动更新URL以反映新模型
+        if (Elements.geminiUrl.value.includes(DEFAULT_GEMINI_URL)) {
+            const selectedModel = Elements.geminiModel.value;
+            Elements.geminiUrl.value = `${DEFAULT_GEMINI_URL}/${selectedModel}:generateContent`;
+        }
+    });
 }
 
 // Helper for password toggle buttons
@@ -652,8 +720,20 @@ async function testApiConnection(modelType) {
                 break;
                 
             case MODEL_NAME_GEMINI:
-                // Gemini使用URL参数而非Authorization头
-                url = `${apiUrl}?key=${apiKey}`;
+                // 修复Gemini API URL构建
+                // 当前URL已包含模型名称，但我们需要将URL与key合并并确保不重复添加模型名称
+                // 1. 确保基础URL不包含查询参数
+                let baseUrl = apiUrl.split('?')[0];
+                
+                // 2. 如果URL中已包含":generateContent"，则使用它
+                if (!baseUrl.endsWith(':generateContent')) {
+                    // 从下拉菜单中获取模型名称并添加到URL
+                    baseUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelVariant}:generateContent`;
+                }
+                
+                // 3. 添加API密钥作为查询参数
+                url = `${baseUrl}?key=${apiKey}`;
+                
                 bodyPayload = {
                     contents: [{ role: "user", parts: [{ text: testMessage }] }],
                     generationConfig: {
@@ -708,14 +788,48 @@ async function testApiConnection(modelType) {
         if (!response.ok) {
             const errorText = await response.text();
             let errorDetails = errorText;
+            let errorMessage = '';
+            
+            // 尝试解析JSON错误响应
             try {
                 const errorJson = JSON.parse(errorText);
                 if (errorJson.error?.message) {
                     errorDetails = errorJson.error.message;
                 }
-            } catch (e) { /* 非JSON错误响应，使用原始文本 */ }
+            } catch (e) { 
+                // 非JSON错误响应，使用原始文本
+                // 对于HTML错误页面（如404页面），提取有用信息
+                if (response.status === 404 && errorText.includes('<!DOCTYPE html>')) {
+                    errorMessage = `API端点不存在(404)，请检查URL是否正确。`;
+                    // 对于Gemini API，常见错误是URL格式不正确或模型名称错误
+                    if (modelType === MODEL_NAME_GEMINI) {
+                        errorMessage += `\n可能原因：1) API URL格式不正确 2) 模型名称错误 3) API密钥无效`;
+                        errorMessage += `\n正确格式应为: https://generativelanguage.googleapis.com/v1beta/models/MODEL_NAME:generateContent?key=YOUR_API_KEY`;
+                    }
+                    showTestResult(errorMessage, 'error');
+                    return;
+                }
+            }
             
-            showTestResult(`API测试失败 (HTTP ${response.status}): ${errorDetails}`, 'error');
+            // 根据状态码提供更多具体信息
+            switch (response.status) {
+                case 401:
+                    errorMessage = `API密钥无效或未授权 (HTTP 401)`;
+                    break;
+                case 403:
+                    errorMessage = `权限被拒绝 (HTTP 403)，请检查API密钥权限`;
+                    break;
+                case 404:
+                    errorMessage = `API端点不存在 (HTTP 404)，请检查URL`;
+                    break;
+                case 429:
+                    errorMessage = `请求过多 (HTTP 429)，已超出API速率限制`;
+                    break;
+                default:
+                    errorMessage = `API测试失败 (HTTP ${response.status})`;
+            }
+            
+            showTestResult(`${errorMessage}: ${errorDetails}`, 'error');
             return;
         }
         
@@ -747,6 +861,12 @@ async function testApiConnection(modelType) {
                     const parts = data.candidates[0].content.parts;
                     const texts = parts.map(part => part.text || '').filter(Boolean);
                     responseText = texts.join(' ');
+                } else if (data.promptFeedback) {
+                    // 一些Gemini错误会在promptFeedback中返回
+                    responseText = `连接成功，但有提示反馈: ${JSON.stringify(data.promptFeedback)}`;
+                } else if (data.error) {
+                    // 解析Google API错误格式
+                    responseText = `错误: ${data.error.message || JSON.stringify(data.error)}`;
                 }
                 break;
                 
@@ -798,104 +918,342 @@ async function testApiConnection(modelType) {
     }
 }
 
-async function handleRefreshModels() {
-     Elements.refreshModelsButton.disabled = true;
-     Elements.refreshModelsButton.textContent = '刷新中...';
-     showStatus('正在刷新模型列表...', 'info');
-     try {
-          const currentModel = Elements.grokModel.value; // Remember currently selected
-          await fetchXAIModels(true, currentModel); // Force refresh, pass current
-          showStatus('模型列表已刷新。', 'success');
-     } catch (error) {
-          showStatus(`刷新模型列表失败: ${error.message}`, 'error');
-     } finally {
-          Elements.refreshModelsButton.disabled = false;
-          Elements.refreshModelsButton.textContent = '刷新列表';
-     }
+async function handleRefreshModels(event) {
+    // 根据点击的按钮确定要刷新的模型类型
+    let modelType;
+    let buttonElement;
+    
+    if (event.target === Elements.refreshGrokModelsButton) {
+        modelType = MODEL_NAME_GROK;
+        buttonElement = Elements.refreshGrokModelsButton;
+    } else if (event.target === Elements.refreshGeminiModelsButton) {
+        modelType = MODEL_NAME_GEMINI;
+        buttonElement = Elements.refreshGeminiModelsButton;
+    } else if (event.target === Elements.refreshClaudeModelsButton) {
+        modelType = MODEL_NAME_CLAUDE;
+        buttonElement = Elements.refreshClaudeModelsButton;
+    } else {
+        return; // 未知按钮，不执行操作
+    }
+    
+    // 禁用按钮并更新文本
+    buttonElement.disabled = true;
+    buttonElement.textContent = '刷新中...';
+    showStatus(`正在刷新${modelType}模型列表...`, 'info');
+    
+    try {
+        switch (modelType) {
+            case MODEL_NAME_GROK:
+                const currentGrokModel = Elements.grokModel.value;
+                await fetchXAIModels(true, currentGrokModel);
+                break;
+            case MODEL_NAME_GEMINI:
+                const currentGeminiModel = Elements.geminiModel.value;
+                await fetchGeminiModels(true, currentGeminiModel);
+                break;
+            case MODEL_NAME_CLAUDE:
+                const currentClaudeModel = Elements.claudeModel.value;
+                await fetchClaudeModels(true, currentClaudeModel);
+                break;
+        }
+        showStatus(`${modelType}模型列表已刷新。`, 'success');
+    } catch (error) {
+        showStatus(`刷新${modelType}模型列表失败: ${error.message}`, 'error');
+    } finally {
+        buttonElement.disabled = false;
+        buttonElement.textContent = '刷新列表';
+    }
 }
 
 // Fetch available models (Simulated - Replace with actual API call if available)
 async function fetchXAIModels(forceRefresh = false, currentModelValue = null) {
-     // ** SIMULATED FUNCTION **
-     // Replace this with an actual fetch to an X.AI endpoint if one exists.
-     // For now, it uses a hardcoded list and simulates based on API key presence.
-     showDebugOutput('获取模型列表 (模拟)...');
+    // ** SIMULATED FUNCTION **
+    // Replace this with an actual fetch to an X.AI endpoint if one exists.
+    // For now, it uses a hardcoded list and simulates based on API key presence.
+    showDebugOutput('获取Grok模型列表...');
 
-     // Avoid unnecessary "fetching" if dropdown is populated and not forcing refresh
-      if (!forceRefresh && Elements.grokModel.options.length > 1) { // Check for more than default/placeholder
-          showDebugOutput('使用现有模型列表。');
-          // Ensure current value is still selected if provided
-          if(currentModelValue && Array.from(Elements.grokModel.options).some(opt => opt.value === currentModelValue)) {
-              Elements.grokModel.value = currentModelValue;
-          }
-          return;
-      }
+    // Avoid unnecessary "fetching" if dropdown is populated and not forcing refresh
+    if (!forceRefresh && Elements.grokModel.options.length > 1) { // Check for more than default/placeholder
+        showDebugOutput('使用现有Grok模型列表。');
+        // Ensure current value is still selected if provided
+        if(currentModelValue && Array.from(Elements.grokModel.options).some(opt => opt.value === currentModelValue)) {
+            Elements.grokModel.value = currentModelValue;
+        }
+        return;
+    }
 
-      // Simulate network delay for refresh
-      if (forceRefresh) {
-           await new Promise(resolve => setTimeout(resolve, 500));
-      }
+    // Simulate network delay for refresh
+    if (forceRefresh) {
+         await new Promise(resolve => setTimeout(resolve, 500));
+    }
 
-      let models = [];
-      try {
-          const { apiKeys = {} } = await chrome.storage.sync.get(STORAGE_KEYS.API_KEYS);
-          const hasApiKey = !!apiKeys[MODEL_NAME_GROK];
+    let models = [];
+    try {
+        const { apiKeys = {} } = await chrome.storage.sync.get(STORAGE_KEYS.API_KEYS);
+        const hasApiKey = !!apiKeys[MODEL_NAME_GROK];
 
-          if (hasApiKey) {
-              // Simulate more models if key exists
-               models = [
-                   { id: 'grok-3.5', name: 'grok-3.5 (最新)' },
-                   { id: 'grok-3-beta', name: 'grok-3-beta' },
-                   { id: 'grok-3-mini-beta', name: 'grok-3-mini-beta' },
-                   { id: 'grok-3-mini-fast-beta', name: 'grok-3-mini-fast-beta' },
-                   { id: 'grok-2', name: 'grok-2' },
-                   { id: 'grok-1.5', name: 'grok-1.5' }
-               ];
-              showDebugOutput('模拟：检测到API密钥，获取完整模型列表。');
-          } else {
-              // Simulate fewer models if no key
-              models = [
-                   { id: 'grok-3-beta', name: 'grok-3-beta' },
-                   { id: 'grok-3-mini-beta', name: 'grok-3-mini-beta' },
-                   { id: 'grok-3-mini-fast-beta', name: 'grok-3-mini-fast-beta' }
-               ];
-              showDebugOutput('模拟：未检测到API密钥，获取基础模型列表。');
-          }
+        if (hasApiKey) {
+            // 模拟更多包含最新模型的列表
+            models = [
+                { id: 'grok-4', name: 'grok-4 (最新)' }, 
+                { id: 'grok-3.5-turbo', name: 'grok-3.5-turbo (2024)' },
+                { id: 'grok-3.5', name: 'grok-3.5' },
+                { id: 'grok-3-beta', name: 'grok-3-beta' },
+                { id: 'grok-3-mini-plus', name: 'grok-3-mini-plus (新)' },
+                { id: 'grok-3-mini-beta', name: 'grok-3-mini-beta' },
+                { id: 'grok-3-mini-fast-beta', name: 'grok-3-mini-fast-beta' },
+                { id: 'grok-2', name: 'grok-2' },
+                { id: 'grok-1.5', name: 'grok-1.5' }
+            ];
+            showDebugOutput('模拟：检测到API密钥，获取完整Grok模型列表包含最新模型。');
+        } else {
+            // 模拟较少但仍包含一些最新模型的列表
+            models = [
+                { id: 'grok-4', name: 'grok-4 (最新)' },
+                { id: 'grok-3.5-turbo', name: 'grok-3.5-turbo (2024)' },
+                { id: 'grok-3-beta', name: 'grok-3-beta' },
+                { id: 'grok-3-mini-beta', name: 'grok-3-mini-beta' },
+                { id: 'grok-3-mini-fast-beta', name: 'grok-3-mini-fast-beta' }
+            ];
+            showDebugOutput('模拟：未检测到API密钥，获取基础Grok模型列表。');
+        }
 
-          // Populate dropdown
-          Elements.grokModel.innerHTML = ''; // Clear existing options
-          models.forEach(model => {
-              const option = document.createElement('option');
-              option.value = model.id;
-              option.textContent = model.name;
-              Elements.grokModel.appendChild(option);
-          });
+        // Populate dropdown
+        Elements.grokModel.innerHTML = ''; // Clear existing options
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = model.name;
+            Elements.grokModel.appendChild(option);
+        });
 
-           // Try to re-select the previously selected or saved model
-           const modelToSelect = currentModelValue || DEFAULT_GROK_MODEL;
-           if (Array.from(Elements.grokModel.options).some(opt => opt.value === modelToSelect)) {
-               Elements.grokModel.value = modelToSelect;
-           } else {
-                // If the saved model is not in the new list, add it and select it
-                 console.warn(`Previously selected model "${modelToSelect}" not in fetched list. Adding it.`);
-                 const option = document.createElement('option');
-                 option.value = modelToSelect;
-                 option.textContent = `${modelToSelect} (Saved/Custom)`;
-                 Elements.grokModel.appendChild(option);
-                 Elements.grokModel.value = modelToSelect;
-           }
+        // Try to re-select the previously selected or saved model
+        const modelToSelect = currentModelValue || DEFAULT_GROK_MODEL;
+        if (Array.from(Elements.grokModel.options).some(opt => opt.value === modelToSelect)) {
+            Elements.grokModel.value = modelToSelect;
+        } else {
+            // If the saved model is not in the new list, add it and select it
+            console.warn(`Previously selected model "${modelToSelect}" not in fetched list. Adding it.`);
+            const option = document.createElement('option');
+            option.value = modelToSelect;
+            option.textContent = `${modelToSelect} (已保存)`;
+            Elements.grokModel.appendChild(option);
+            Elements.grokModel.value = modelToSelect;
+        }
 
-          showDebugOutput('模型列表填充完成。');
+        showDebugOutput('Grok模型列表填充完成。');
 
-      } catch (error) {
-           console.error("Error during (simulated) model fetch:", error);
-           showDebugOutput(`获取模型列表出错: ${error.message}`);
-           // Optionally add a placeholder error option
-            Elements.grokModel.innerHTML = '<option value="">无法加载模型</option>';
-           throw error; // Re-throw for caller handling
-      }
+    } catch (error) {
+        console.error("Error during (simulated) model fetch:", error);
+        showDebugOutput(`获取Grok模型列表出错: ${error.message}`);
+        // Optionally add a placeholder error option
+        Elements.grokModel.innerHTML = '<option value="">无法加载模型</option>';
+        throw error; // Re-throw for caller handling
+    }
 }
 
+// 获取Gemini模型列表
+async function fetchGeminiModels(forceRefresh = false, currentModelValue = null) {
+    showDebugOutput('获取Gemini模型列表...');
+
+    // 如果不是强制刷新且下拉菜单已有选项，则不进行刷新
+    if (!forceRefresh && Elements.geminiModel.options.length > 1) {
+        showDebugOutput('使用现有Gemini模型列表。');
+        // 确保当前值仍然被选中（如果提供）
+        if (currentModelValue && Array.from(Elements.geminiModel.options).some(opt => opt.value === currentModelValue)) {
+            Elements.geminiModel.value = currentModelValue;
+        }
+        return;
+    }
+
+    // 模拟刷新时的网络延迟
+    if (forceRefresh) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    let models = [];
+    try {
+        const { apiKeys = {} } = await chrome.storage.sync.get(STORAGE_KEYS.API_KEYS);
+        const hasApiKey = !!apiKeys[MODEL_NAME_GEMINI];
+
+        if (hasApiKey) {
+            // 模拟更多包含最新模型的列表
+            models = [
+                // Gemini 2.5系列
+                { id: 'gemini-2.5-flash-preview-04-17', name: 'gemini-2.5-flash-preview-04-17 (最新)' },
+                { id: 'gemini-2.5-pro-preview-03-25', name: 'gemini-2.5-pro-preview-03-25 (最新)' },
+                
+                // Gemini 2.0系列
+                { id: 'gemini-2.0-flash', name: 'gemini-2.0-flash' },
+                { id: 'gemini-2.0-flash-live-001', name: 'gemini-2.0-flash-live-001' },
+                { id: 'gemini-2.0-flash-lite', name: 'gemini-2.0-flash-lite' },
+                { id: 'gemini-2.0-flash-lite-001', name: 'gemini-2.0-flash-lite-001' },
+                
+                // Gemini 1.5系列
+                { id: 'gemini-1.5-flash-latest', name: 'gemini-1.5-flash-latest' },
+                { id: 'gemini-1.5-flash', name: 'gemini-1.5-flash' },
+                { id: 'gemini-1.5-flash-002', name: 'gemini-1.5-flash-002' },
+                { id: 'gemini-1.5-flash-001', name: 'gemini-1.5-flash-001' },
+                { id: 'gemini-1.5-flash-8b-latest', name: 'gemini-1.5-flash-8b-latest' },
+                { id: 'gemini-1.5-flash-8b', name: 'gemini-1.5-flash-8b' },
+                { id: 'gemini-1.5-flash-8b-001', name: 'gemini-1.5-flash-8b-001' },
+                { id: 'gemini-1.5-pro-latest', name: 'gemini-1.5-pro-latest' },
+                { id: 'gemini-1.5-pro', name: 'gemini-1.5-pro' },
+                { id: 'gemini-1.5-pro-002', name: 'gemini-1.5-pro-002' },
+                { id: 'gemini-1.5-pro-001', name: 'gemini-1.5-pro-001' },
+                
+                // 嵌入模型
+                { id: 'gemini-embedding-exp-03-07', name: 'gemini-embedding-exp-03-07' },
+                { id: 'text-embedding-004', name: 'text-embedding-004' },
+                { id: 'embedding-001', name: 'embedding-001' }
+            ];
+            showDebugOutput('模拟：检测到Gemini API密钥，获取完整模型列表包含预览版本。');
+        } else {
+            // 模拟较少但仍包含一些最新模型的列表
+            models = [
+                { id: 'gemini-2.5-flash-preview-04-17', name: 'gemini-2.5-flash-preview-04-17 (最新)' },
+                { id: 'gemini-2.5-pro-preview-03-25', name: 'gemini-2.5-pro-preview-03-25 (最新)' },
+                { id: 'gemini-2.0-flash', name: 'gemini-2.0-flash' },
+                { id: 'gemini-1.5-flash', name: 'gemini-1.5-flash' },
+                { id: 'gemini-1.5-pro', name: 'gemini-1.5-pro' }
+            ];
+            showDebugOutput('模拟：未检测到Gemini API密钥，获取基础模型列表包含预览版本。');
+        }
+
+        // 填充下拉菜单
+        Elements.geminiModel.innerHTML = ''; // 清除现有选项
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = model.name;
+            Elements.geminiModel.appendChild(option);
+        });
+
+        // 尝试重新选择之前选择的或保存的模型
+        const modelToSelect = currentModelValue || DEFAULT_GEMINI_MODEL;
+        if (Array.from(Elements.geminiModel.options).some(opt => opt.value === modelToSelect)) {
+            Elements.geminiModel.value = modelToSelect;
+        } else {
+            // 如果保存的模型不在新的列表中，则添加它并选择它
+            console.warn(`之前选择的Gemini模型"${modelToSelect}"不在获取的列表中。正在添加它。`);
+            const option = document.createElement('option');
+            option.value = modelToSelect;
+            option.textContent = `${modelToSelect} (已保存)`;
+            Elements.geminiModel.appendChild(option);
+            Elements.geminiModel.value = modelToSelect;
+        }
+
+        showDebugOutput('Gemini模型列表填充完成。');
+        
+        // 触发模型变更事件以更新URL
+        const changeEvent = new Event('change');
+        Elements.geminiModel.dispatchEvent(changeEvent);
+
+    } catch (error) {
+        console.error("获取Gemini模型列表时出错:", error);
+        showDebugOutput(`获取Gemini模型列表出错: ${error.message}`);
+        // 添加一个占位符错误选项
+        Elements.geminiModel.innerHTML = '<option value="">无法加载模型</option>';
+        throw error;
+    }
+}
+
+// 获取Claude模型列表
+async function fetchClaudeModels(forceRefresh = false, currentModelValue = null) {
+    showDebugOutput('获取Claude模型列表...');
+
+    // 如果不是强制刷新且下拉菜单已有选项，则不进行刷新
+    if (!forceRefresh && Elements.claudeModel.options.length > 1) {
+        showDebugOutput('使用现有Claude模型列表。');
+        // 确保当前值仍然被选中（如果提供）
+        if (currentModelValue && Array.from(Elements.claudeModel.options).some(opt => opt.value === currentModelValue)) {
+            Elements.claudeModel.value = currentModelValue;
+        }
+        return;
+    }
+
+    // 模拟刷新时的网络延迟
+    if (forceRefresh) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    let models = [];
+    try {
+        const { apiKeys = {} } = await chrome.storage.sync.get(STORAGE_KEYS.API_KEYS);
+        const hasApiKey = !!apiKeys[MODEL_NAME_CLAUDE];
+
+        if (hasApiKey) {
+            // 模拟更多包含最新模型的列表
+            models = [
+                // Claude 3.7系列
+                { id: 'claude-3-7-sonnet-20250219', name: 'claude-3.7-sonnet (最新)' },
+                { id: 'claude-3-7-sonnet-latest', name: 'claude-3.7-sonnet-latest' },
+                
+                // Claude 3.5系列
+                { id: 'claude-3-5-sonnet-20241022', name: 'claude-3.5-sonnet-v2 (最新)' },
+                { id: 'claude-3-5-sonnet-latest', name: 'claude-3.5-sonnet-latest' },
+                { id: 'claude-3-5-sonnet-20240620', name: 'claude-3.5-sonnet-v1' },
+                { id: 'claude-3-5-haiku-20241022', name: 'claude-3.5-haiku (最新)' },
+                { id: 'claude-3-5-haiku-latest', name: 'claude-3.5-haiku-latest' },
+                
+                // Claude 3系列
+                { id: 'claude-3-opus-20240229', name: 'claude-3-opus-20240229' },
+                { id: 'claude-3-opus-latest', name: 'claude-3-opus-latest' },
+                { id: 'claude-3-sonnet-20240229', name: 'claude-3-sonnet-20240229' },
+                { id: 'claude-3-haiku-20240307', name: 'claude-3-haiku-20240307' },
+                
+                // 旧版Claude模型
+                { id: 'claude-2.1', name: 'claude-2.1' },
+                { id: 'claude-2.0', name: 'claude-2.0' },
+                { id: 'claude-instant-1.2', name: 'claude-instant-1.2' }
+            ];
+            showDebugOutput('模拟：检测到Claude API密钥，获取完整模型列表包含最新版本。');
+        } else {
+            // 模拟较少但仍包含最新模型的列表
+            models = [
+                { id: 'claude-3-7-sonnet-20250219', name: 'claude-3.7-sonnet (最新)' },
+                { id: 'claude-3-5-sonnet-20241022', name: 'claude-3.5-sonnet-v2 (最新)' },
+                { id: 'claude-3-5-haiku-20241022', name: 'claude-3.5-haiku (最新)' },
+                { id: 'claude-3-opus-20240229', name: 'claude-3-opus-20240229' },
+                { id: 'claude-3-sonnet-20240229', name: 'claude-3-sonnet-20240229' },
+                { id: 'claude-3-haiku-20240307', name: 'claude-3-haiku-20240307' }
+            ];
+            showDebugOutput('模拟：未检测到Claude API密钥，获取基础模型列表包含最新版本。');
+        }
+
+        // 填充下拉菜单
+        Elements.claudeModel.innerHTML = ''; // 清除现有选项
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = model.name;
+            Elements.claudeModel.appendChild(option);
+        });
+
+        // 尝试重新选择之前选择的或保存的模型
+        const modelToSelect = currentModelValue || DEFAULT_CLAUDE_MODEL;
+        if (Array.from(Elements.claudeModel.options).some(opt => opt.value === modelToSelect)) {
+            Elements.claudeModel.value = modelToSelect;
+        } else {
+            // 如果保存的模型不在新的列表中，则添加它并选择它
+            console.warn(`之前选择的Claude模型"${modelToSelect}"不在获取的列表中。正在添加它。`);
+            const option = document.createElement('option');
+            option.value = modelToSelect;
+            option.textContent = `${modelToSelect} (已保存)`;
+            Elements.claudeModel.appendChild(option);
+            Elements.claudeModel.value = modelToSelect;
+        }
+
+        showDebugOutput('Claude模型列表填充完成。');
+
+    } catch (error) {
+        console.error("获取Claude模型列表时出错:", error);
+        showDebugOutput(`获取Claude模型列表出错: ${error.message}`);
+        // 添加一个占位符错误选项
+        Elements.claudeModel.innerHTML = '<option value="">无法加载模型</option>';
+        throw error;
+    }
+}
 
 // --- Debugging Tools ---
 
