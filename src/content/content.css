@@ -133,3 +133,31 @@
         font-size: 14px;
     }
 }
+
+/* 撤销按钮专属样式 */
+.ai-text-optimizer-button-undo {
+    /* 继承主要样式 */
+}
+.ai-text-optimizer-button-undo::before {
+    content: "↩️";
+    margin-right: 6px;
+    font-size: 16px;
+}
+/* 悬停效果同优化按钮 */
+.ai-text-optimizer-button-undo:hover {
+    background-color: #1557b0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transform: translateY(-2px);
+}
+.ai-text-optimizer-button-undo:disabled {
+    background-color: #a0a0a0;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+.ai-text-optimizer-button-undo-success {
+    background-color: #0f9d58 !important;
+}
+.ai-text-optimizer-button-undo-error {
+    background-color: #d93025 !important;
+}

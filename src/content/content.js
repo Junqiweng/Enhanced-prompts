@@ -68,6 +68,7 @@ class InputDetector {
             toggleShortcut: 'Alt+O', // 默认为 Alt+O
         };
         this.lastFocusedInput = null;
+        this.inputHistoryMap = new Map();
         this.init();
         console.log('AI Text Optimizer: Input Detector initialized.');
     }
@@ -106,6 +107,7 @@ class InputDetector {
                     document.querySelectorAll('[data-ai-optimizer-attached]').forEach(el => delete el.dataset.aiOptimizerAttached);
                     this.observedInputs.clear();
                     this.inputButtonMap.clear();
+                    this.inputHistoryMap.clear();
                     this.addExistingInputs();
                 });
                 sendResponse({ success: true });
@@ -210,12 +212,27 @@ class InputDetector {
         if (this.observedInputs.has(input) || input.dataset.aiOptimizerAttached) return;
         this.observedInputs.add(input);
         input.dataset.aiOptimizerAttached = 'true';
+        this.inputHistoryMap.set(input, []); // 初始化撤销历史为空栈
         // 记录最后聚焦的输入框
         input.addEventListener('focus', () => { this.lastFocusedInput = input; });
 
         if (!this.settings.showButton) return;
         const optimizeButton = this.createOptimizeButton();
         document.body.appendChild(optimizeButton);
+        const undoButton = this.createUndoButton();
+        document.body.appendChild(undoButton);
+
+        const updateUndoPosition = () => {
+            if (!document.body.contains(input) || !document.body.contains(undoButton)) return;
+            const rect = input.getBoundingClientRect();
+            const y = rect.top + window.scrollY + (rect.height / 2) - (undoButton.offsetHeight / 2);
+            const x = rect.left + window.scrollX + rect.width + 8 + optimizeButton.offsetWidth + 8;
+            undoButton.style.position = 'fixed';
+            undoButton.style.top = `${y}px`;
+            undoButton.style.left = `${x}px`;
+            undoButton.style.zIndex = '99999';
+        };
+        const debouncedUndo = debounce(updateUndoPosition, 150);
 
         const updatePosition = this.createPositionUpdater(input, optimizeButton);
         const debounced = debounce(updatePosition, 150);
@@ -223,68 +240,76 @@ class InputDetector {
 
         // 根据可见性设置处理按钮的初始显示状态和事件监听
         if (this.settings.buttonVisibility === 'hidden') {
-            // 完全隐藏模式 - 按钮始终保持隐藏
             optimizeButton.style.display = 'none';
-            
-            // 仍然需要位置更新事件以防通过其他方式激活按钮
+            undoButton.style.display = 'none';
             window.addEventListener('scroll', debounced, { passive: true });
             window.addEventListener('resize', debounced);
-            
+            window.addEventListener('scroll', debouncedUndo, { passive: true });
+            window.addEventListener('resize', debouncedUndo);
         } else if (this.settings.buttonVisibility === 'always') {
-            // 始终可见模式 - 按钮一直显示，样式更低调
             optimizeButton.style.display = 'flex';
             optimizeButton.classList.add('ai-text-optimizer-button-subtle');
-            
-            // 无需隐藏按钮，仅添加位置更新监听器
+            undoButton.style.display = 'flex';
+            undoButton.classList.add('ai-text-optimizer-button-subtle');
             window.addEventListener('scroll', debounced, { passive: true });
             window.addEventListener('resize', debounced);
-            
-            // 立即更新按钮位置
+            window.addEventListener('scroll', debouncedUndo, { passive: true });
+            window.addEventListener('resize', debouncedUndo);
             updatePosition();
-            
+            updateUndoPosition();
         } else if (this.settings.buttonVisibility === 'focus') {
-            // 聚焦/悬停模式 - 仅在输入框聚焦或悬停时显示按钮
             optimizeButton.style.display = 'none'; // 初始隐藏
-            
+            undoButton.style.display = 'none';
             // 定义显示按钮的函数
             const showButton = () => {
                 if (document.body.contains(input)) {
                     optimizeButton.style.display = 'flex';
+                    const histCount = this.inputHistoryMap.get(input).length;
+                    if (histCount > 0) {
+                        undoButton.style.display = 'flex';
+                    }
                     updatePosition();
+                    updateUndoPosition();
                 } else {
                     this.cleanupInputHandler(input, optimizeButton, debounced);
+                    this.cleanupInputHandler(input, undoButton, debouncedUndo);
                 }
             };
-            
             // 定义隐藏按钮的函数
             const hideButton = () => {
                 setTimeout(() => {
-                    if (!optimizeButton.matches(':hover')) {
+                    if (!optimizeButton.matches(':hover') && !undoButton.matches(':hover')) {
                         optimizeButton.style.display = 'none';
+                        undoButton.style.display = 'none';
                     }
                 }, 250);
             };
-            
-            // 添加输入框事件监听器
             input.addEventListener('focus', showButton);
             input.addEventListener('input', showButton);
             input.addEventListener('blur', hideButton);
-            
-            // 添加按钮事件监听器
             optimizeButton.addEventListener('mouseenter', () => clearTimeout(hideButton));
             optimizeButton.addEventListener('mouseleave', hideButton);
-            
-            // 添加滚动和调整大小的事件监听器
+            undoButton.addEventListener('mouseenter', () => clearTimeout(hideButton));
+            undoButton.addEventListener('mouseleave', hideButton);
             window.addEventListener('scroll', debounced, { passive: true });
             window.addEventListener('resize', debounced);
+            window.addEventListener('scroll', debouncedUndo, { passive: true });
+            window.addEventListener('resize', debouncedUndo);
         }
 
         // Reset state on manual input
-        const resetOptimizeState = () => {
+        const resetOptimizeState = (event) => {
+            // 仅对用户手动输入清空撤销历史，忽略程序触发的 input 事件
+            if (event && event.isTrusted === false) return;
+            // 清空撤销历史记录
+            this.inputHistoryMap.set(input, []);
+            undoButton.disabled = true;
+            if (this.settings.buttonVisibility !== 'always') {
+                undoButton.style.display = 'none';
+            }
             input.dataset.originalText = this.getInputText(input); // Update original text on change
             optimizeButton.disabled = false;
             optimizeButton.innerHTML = '优化文本'; // Reset text
-            
             // 重置按钮样式，并根据设置添加低调样式
             optimizeButton.className = 'ai-text-optimizer-button'; // Reset class
             if (this.settings.buttonVisibility === 'always') {
@@ -302,8 +327,8 @@ class InputDetector {
             const originalForCache = input.dataset.originalText || textToOptimize; // Use original if available for cache consistency
 
             if (!textToOptimize || textToOptimize.trim().length < 5) {
-                 this.showButtonStatus(optimizeButton, '无内容', 'error', '请输入至少5个字符');
-                 return;
+                this.showButtonStatus(optimizeButton, '无内容', 'error', '请输入至少5个字符');
+                return;
             }
 
             // -- Start Optimization --
@@ -313,59 +338,69 @@ class InputDetector {
 
             // Check client-side cache first (using original text as key)
             const cacheKey = originalForCache;
-             if (this.textCache.has(cacheKey)) {
-                 const cachedResult = this.textCache.get(cacheKey);
-                 console.log('Using client-side cache:', cachedResult);
-                 // Check if cached result itself was an error
-                 if (!cachedResult.error) {
-                     this.setInputText(input, cachedResult.optimizedText);
-                     this.showButtonStatus(optimizeButton, '优化成功', 'success');
-                     return; // Exit after using cache
-                 } else {
-                      console.log('Cached item was an error, proceeding to API call.');
-                 }
-             }
+            if (this.textCache.has(cacheKey)) {
+                const cachedResult = this.textCache.get(cacheKey);
+                console.log('Using client-side cache:', cachedResult);
+                if (!cachedResult.error) {
+                    // 添加撤销历史
+                    const history = this.inputHistoryMap.get(input);
+                    if (history) {
+                        history.push(textToOptimize);
+                        undoButton.disabled = false;
+                    }
+                    this.setInputText(input, cachedResult.optimizedText);
+                    this.showButtonStatus(optimizeButton, '优化成功', 'success');
+                    return; // Exit after using cache
+                } else {
+                    console.log('Cached item was an error, proceeding to API call.');
+                }
+            }
 
             // Send to background script for API call
             try {
-                const result = await chrome.runtime.sendMessage({
-                    action: 'optimizeText',
-                    text: textToOptimize
-                });
-
+                const result = await chrome.runtime.sendMessage({ action: 'optimizeText', text: textToOptimize });
                 console.log('Optimization result from background:', result);
-
                 if (result && result.error) {
-                    // Handle errors reported by background script
                     this.showButtonStatus(optimizeButton, '优化失败', 'error', result.message);
-                    // Cache the error state if desired (or not, to allow retries)
-                    // this.textCache.set(cacheKey, { error: true, message: result.message });
                 } else if (result && result.optimizedText) {
-                    // Success
+                    // 添加撤销历史
+                    const history = this.inputHistoryMap.get(input);
+                    if (history) {
+                        history.push(textToOptimize);
+                        undoButton.disabled = false;
+                    }
                     this.setInputText(input, result.optimizedText);
-                    // Cache the successful result
                     this.textCache.set(cacheKey, { optimizedText: result.optimizedText });
-                     this.showButtonStatus(optimizeButton, '优化成功', 'success');
+                    this.showButtonStatus(optimizeButton, '优化成功', 'success');
                 } else {
-                    // Unexpected response
                     console.error('Invalid response structure received:', result);
                     this.showButtonStatus(optimizeButton, '响应无效', 'error', '从后台收到的响应格式不正确。');
                 }
-
             } catch (error) {
                 console.error('Error sending message to background or processing result:', error);
                 let message = '与后台脚本通信失败。';
                 if (error.message?.includes('Extension context invalidated')) {
                     message = '扩展已失效，请刷新页面。';
-                     // Optionally disable the button permanently or show a persistent error
                 } else if (error.message) {
                     message += ` (${error.message})`;
                 }
                 this.showButtonStatus(optimizeButton, '通信错误', 'error', message);
-            } finally {
-                // Re-enable button after a short delay (allowing status message to be seen)
-                 // The showButtonStatus function handles the timed reset now
-                // setTimeout(() => { optimizeButton.disabled = false; }, 2000); // Removed, handled by showButtonStatus
+            }
+        });
+
+        // 撤销按钮点击事件
+        undoButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const history = this.inputHistoryMap.get(input);
+            if (!history || history.length === 0) return;
+            const prevText = history.pop(); // 获取并移除上一个状态
+            this.setInputText(input, prevText);
+            if (history.length === 0) {
+                undoButton.disabled = true;
+                if (this.settings.buttonVisibility !== 'always') {
+                    undoButton.style.display = 'none';
+                }
             }
         });
     }
@@ -409,6 +444,23 @@ class InputDetector {
                  button.style.display = 'none';
             }
         };
+    }
+
+    // Create the undo button element
+    createUndoButton() {
+        const button = document.createElement('button');
+        button.className = 'ai-text-optimizer-button ai-text-optimizer-button-undo';
+        button.innerHTML = '撤销';
+        button.type = 'button';
+        // 初始状态下根据可见性设置按钮样式
+        if (this.settings.buttonVisibility === 'always') {
+            button.classList.add('ai-text-optimizer-button-subtle');
+            button.style.display = 'flex';
+        } else {
+            button.style.display = 'none';
+        }
+        button.disabled = true;
+        return button;
     }
 
      // Show status on the button itself and reset after a delay
